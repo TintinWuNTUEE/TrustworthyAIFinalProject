@@ -1,0 +1,1 @@
+models: ['resnet18','resnet50','vit-s','vit-t','cvt']
