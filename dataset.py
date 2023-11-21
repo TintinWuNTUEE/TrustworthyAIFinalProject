@@ -7,7 +7,9 @@ def get_dataset(batch_size, num_workers):
             "./data",
             split="train",
             download=True,
-            transform=transforms.Compose([transforms.ToTensor(),]),
+            transform=transforms.Compose([
+                        transforms.Resize([224, 224]),
+                        transforms.ToTensor()]),
         ),
         batch_size=batch_size,
         shuffle=True, 
@@ -18,7 +20,9 @@ def get_dataset(batch_size, num_workers):
             "./data",
             split="test",
             download=True,
-            transform=transforms.Compose([transforms.ToTensor(),]),
+            transform=transforms.Compose([
+                        transforms.Resize([224, 224]),
+                        transforms.ToTensor()]),
         ),
         batch_size=batch_size,
         shuffle=False, 

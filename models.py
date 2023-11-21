@@ -1,4 +1,3 @@
-from transformers import AutoFeatureExtractor, ResNetForImageClassification
 import torch
 import timm
 
