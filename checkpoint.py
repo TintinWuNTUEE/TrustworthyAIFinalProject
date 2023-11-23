@@ -19,7 +19,7 @@ def _create_directory(directory):
     os.makedirs(directory)
   return
 
-def load_model(model,path):
+def load_model(model,path,model_name):
     '''
     Load only model
     '''
@@ -28,38 +28,46 @@ def load_model(model,path):
         assert os.path.isfile(file_path), '=> No checkpoint found at {}'.format(path)
         checkpoint = torch.load(file_path, map_location='cpu')
         model.load_state_dict(checkpoint['model'])
+    else:
+        print('=> No checkpoint. Initializing model from scratch')
+        os.makedirs(path)
+        os.makedirs(os.path.join(path,model_name))
     return model
 
-def load_checkpoint(model, optimizer, scheduler,scaler, path, logger):
+def load_checkpoint(model,model_name, optimizer, scheduler, path, logger):
     '''
     Load checkpoint file
     '''
 
-    if os.listdir(path):
+    if os.listdir(path) and os.listdir(os.path.join(path,model_name)):
         file_path = sorted(glob(os.path.join(path, '*.pth')))[0]
         checkpoint = torch.load(file_path, map_location='cpu')
         model.load_state_dict(checkpoint['model'])
         epoch = checkpoint.pop('startEpoch')
         optimizer.load_state_dict(checkpoint.pop('optimizer'))
         scheduler.load_state_dict(checkpoint.pop('scheduler'))
-        scaler.load_state_dict(checkpoint["scaler"])
         logger.info('=> Continuing training routine. Checkpoint loaded at {}'.format(file_path))
-        return model, optimizer, scheduler,scaler, epoch
+        return model, optimizer, scheduler, epoch
     else:
-        logger.info('=> No checkpoint. Initializing model from scratch')
+        print('=> No checkpoint. Initializing model from scratch')
+        if not os.path.exists(path):
+            os.makedirs(path)
+        if not os.path.exists(os.path.join(path,model_name)):
+          os.makedirs(os.path.join(path,model_name))
         epoch = 1
-    return model, optimizer, scheduler,scaler, epoch
+    return model, optimizer, scheduler, epoch
 
-def save_checkpoint(path,model,optimizer,epoch,scheduler,scaler):
+def save_checkpoint(path,model_name,model,optimizer,epoch,scheduler,scaler):
     '''
     Save checkpoint file
     '''
+    path = os.path.join(path, model_name)
 
   # Remove recursively if epoch_last folder exists and create new one
     _remove_recursively(path)
     _create_directory(path)
 
-    weights_fpath = os.path.join(path, 'epoch_{}.pth'.format(str(epoch).zfill(3)))
+    weights_fpath = os.path.join(path ,'epoch_{}.pth'.format(str(epoch).zfill(3)))
 
     torch.save({
     'startEpoch': epoch+1,  # To start on next epoch when loading the dict...

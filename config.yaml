@@ -7,6 +7,8 @@ train:
   val_interval: 10
   save_interval: 100
   checkpoint_path: './checkpoints'
+  log_path: './logs'
+  log_file: 'train.log'
 optimizer:
   name: Adam
   lr: 0.001
