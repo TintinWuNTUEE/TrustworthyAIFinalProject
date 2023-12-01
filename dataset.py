@@ -39,8 +39,11 @@ def get_dataset(batch_size, num_workers):
 
  
 def get_wavelet(image):
-    
-    LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')#inputs(batch,3,224,224)
+        
+    if torch.cuda.is_available():
+        LL, (LH, HL, HH) = pywt.dwt2(image.cpu().detach().numpy(),'haar')#inputs(batch,3,224,224)
+    else:
+        LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')#inputs(batch,3,224,224)
     # print (torch.min(inputs[0,:,:,:]),torch.max(inputs[0,:,:,:]))
     # print (LH.min(),LH.max(),len(LH))
     # for i,a in enumerate([LL, LH, HL, HH]):  #3,114,114

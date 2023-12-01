@@ -52,7 +52,7 @@ def train():
 
 # Function to train a single model
 def train_single_model(args,model_name,train_dataloader,test_dataloader,logger):
-    model = get_model(model_name)
+    #model = get_model(model_name)
     
     # optimizer,schedueler = get_optimizer(args['optimizer']['name'],
     #                                      model,
@@ -124,16 +124,20 @@ def validataion(args,model,test_loader,criterion,epoch,logger):
 def attack(data_loader,A_name):
     # for p in model.parameters():
     #     p.requires_grad = True
-    if model_name =='resnet18':
-        gradients = None
-        model.conv1.register_full_backward_hook(backward_hook, prepend=False)
+    # if model_name =='resnet18':
+    #     gradients = None
+    #     model.conv1.register_full_backward_hook(backward_hook, prepend=False)
     
     total = 0
     correct = 0
     correct_A =0
     correct_A_LL = 0
     correct_A_HH = 0
+    acc_A_LL = 200
+    acc_A_HH = 200
     logger.info('Attack start')
+    filter = 1
+    
     for batch_idx, (data, target) in enumerate(data_loader):
 
         data, target =data.to(device), target.to(device) 
@@ -157,28 +161,34 @@ def attack(data_loader,A_name):
             data_A = FGSM (data ,eps_v,data.grad.data)
             # data_A = FGSM (data ,eps_v,gradients[0])
 
-        
-
-        data_A_LL,data_A_HH = get_wavelet(data_A)
         output_A = model(data_A)
-        output_A_LL = model(data_A_LL)
-        output_A_HH = model(data_A_HH) 
         _, pred_A = output_A.max(1)
-        _, pred_A_LL = output_A_LL.max(1)
-        _, pred_A_HH = output_A_HH.max(1)
-        #print("pred.eq type,",type(pred.eq(target).sum()))
         correct += pred.eq(target).sum()#.item()
         correct_A += pred_A.eq(target).sum()#.item()
-        correct_A_LL += pred_A_LL.eq(target).sum()#.item()
-        correct_A_HH  += pred_A_HH.eq(target).sum()#.item()
-    acc = 100.*correct/total
-    acc_A = 100.*correct_A/total
-    acc_A_LL = 100.*correct_A_LL/total
-    acc_A_HH = 100.*correct_A_HH/total
-    logger.info('Attack Finish, Acc=({:.2f}%), acc_A =({:.2f}%), acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(
-         100. * acc, 100. *acc_A,100. *acc_A_LL,100. *acc_A_HH))
-    print('eps=',eps_v,' acc =',acc,', acc_A =',acc_A,', acc_A_LL=',acc_A_LL,', acc_A_HH=',acc_A_HH)
+        acc = 100.*correct/total
+        acc_A = 100.*correct_A/total
+        
+        if filter==1:
+            data_A_LL,data_A_HH = get_wavelet(data_A)
+            output_A_LL = model(data_A_LL.to(device) )
+            output_A_HH = model(data_A_HH.to(device) ) 
+            _, pred_A_LL = output_A_LL.max(1)
+            _, pred_A_HH = output_A_HH.max(1)
+        
+        
+            correct_A_LL += pred_A_LL.eq(target).sum()#.item()
+            correct_A_HH  += pred_A_HH.eq(target).sum()#.item()
+    
+    if filter==1:
+        acc_A_LL = 100.*correct_A_LL/total
+        acc_A_HH = 100.*correct_A_HH/total
+        logger.info('Attack Finish, eps= {} Acc=({:.2f}%), acc_A =({:.2f}%), acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(
+        eps_v,100. * acc, 100. *acc_A,100. *acc_A_LL,100. *acc_A_HH))
+    else:
+        logger.info('Attack Finish, eps= {} Acc=({:.2f}%), acc_A =({:.2f}%)'.format(
+        eps_v,100. * acc, 100. *acc_A))
     return acc,acc_A,acc_A_LL,acc_A_HH
+    
 
 def backward_hook(module, grad_input, grad_output): 
     global gradients # refers to the variable in the global scope 
@@ -192,43 +202,38 @@ def backward_hook(module, grad_input, grad_output):
 if __name__ == "__main__":
     
     args = parse_args()
+    logger = get_logger(args['train']['log_path'], args['train']['log_file'])
     criterion = nn.CrossEntropyLoss()
     
+    logger.info('Loading data start')
     train_dataloader,test_dataloader = get_dataset(batch_size=args['train']['batch_size'],
                              num_workers=args['train']['num_workers'])
+    logger.info('Loading data finish')
     
-    logger = get_logger(args['train']['log_path'], args['train']['log_file'])
     
-    #如果已經有training檔案就直接load
-    # for model_name in args['models']:
-    #     if not os.path.isfile([args['train']['checkpoint_path'],'/',model_name]):
-    #         input()
-    #         train()
-    #     else:
-    #         model = get_model(model_name])
-    #         model.load_state_dict(torch.load(model_name))          #一般正常load model方式
-    #         # checkpoint = torch.load([args['train']['checkpoint_path'],'/',model_name])
-    #          #model.load_state_dict(checkpoint['model_state_dict'])
-    #          #model, optimizer, schedueler, start_epoch=load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger)
+    
     for model_name in args['models']:
         model = get_model(model_name).to(device)
         optimizer,schedueler = get_optimizer(args['optimizer']['name'],
                                          model,
                                          args['optimizer']['lr'],
                                          args['optimizer']['weight_decay'])
-        # model_path=args['train']['checkpoint_path']+'/'+model_name+'/epoch_112.pth'
-        # print(model_path)
-        # model.load_state_dict(torch.load(model_path,map_location = torch.device('cpu'))["model"])         #一般正常load model方式
-        model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger)
+        model_path = args['train']['checkpoint_path']+'/'+model_name+'.pth'
+        # if no model exist, do training
+        if not os.path.isfile(model_path):
+            input()
+            train_single_model(args,model_name,train_dataloader,test_dataloader,logger)
+        else:
+            model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger)
         
         #print("start_epoch",start_epoch)
         model.eval() 
         gradients = None
         
-        print_model(model)
+        #print_model(model)
         
         
         
     
-    acc,acc_A,acc_A_LL,acc_A_HH = attack(test_dataloader,'FGSM')
+        acc,acc_A,acc_A_LL,acc_A_HH = attack(test_dataloader,'FGSM')
     
