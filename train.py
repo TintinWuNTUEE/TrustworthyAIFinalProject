@@ -124,9 +124,9 @@ def validataion(args,model,test_loader,criterion,epoch,logger):
 def attack(data_loader,A_name):
     # for p in model.parameters():
     #     p.requires_grad = True
-    if model_name =='resnet18':
-        gradients = None
-        model.conv1.register_full_backward_hook(backward_hook, prepend=False)
+    # if model_name =='resnet18':
+    #     gradients = None
+    #     model.conv1.register_full_backward_hook(backward_hook, prepend=False)
     
     total = 0
     correct = 0
@@ -180,14 +180,14 @@ def attack(data_loader,A_name):
     print('eps=',eps_v,' acc =',acc,', acc_A =',acc_A,', acc_A_LL=',acc_A_LL,', acc_A_HH=',acc_A_HH)
     return acc,acc_A,acc_A_LL,acc_A_HH
 
-def backward_hook(module, grad_input, grad_output): 
-    global gradients # refers to the variable in the global scope 
+# def backward_hook(module, grad_input, grad_output): 
+#     global gradients # refers to the variable in the global scope 
 
  
-    gradients=grad_input
-    #print("grad_input",grad_input)
+#     gradients=grad_input
+#     #print("grad_input",grad_input)
 
-    return grad_input        
+#     return grad_input        
 
 if __name__ == "__main__":
     
