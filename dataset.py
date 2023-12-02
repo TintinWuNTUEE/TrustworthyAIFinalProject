@@ -1,6 +1,7 @@
 #TODO
 import torch
 from torchvision import datasets, transforms
+import torch.nn.functional as F
 
 import pywt
 import copy
@@ -57,7 +58,8 @@ def get_wavelet(image):
     # plt.show()
     LL = (LL-LL.min())/(LL.max()-LL.min())      #range[0,1]
     HH = (HH-HH.min())/(HH.max()-HH.min())      #range[0,1]
-
+    LL = F.interpolate(torch.tensor(LL),mode='area',size=[224,224])
+    HH = F.interpolate(torch.tensor(HH),mode='area',size=[224,224])
     return torch.tensor(LL),torch.tensor(HH)
 
 def FGSM (image, eps_v,data_grad):
