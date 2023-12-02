@@ -60,6 +60,7 @@ def train_single_model(args,model_name,train_dataloader,test_dataloader,logger):
     #                                      args['optimizer']['weight_decay'])
     #criterion = nn.CrossEntropyLoss()
     epochs = args['train']['epochs']
+    print_model(model)
     model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger)
     acc = 0.0
     best_acc = 0.0
@@ -183,10 +184,10 @@ def attack(data_loader,A_name):
         acc_A_LL = 100.*correct_A_LL/total
         acc_A_HH = 100.*correct_A_HH/total
         logger.info('Attack Finish, eps= {} Acc=({:.2f}%), acc_A =({:.2f}%), acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(
-        eps_v,100. * acc, 100. *acc_A,100. *acc_A_LL,100. *acc_A_HH))
+        eps_v, acc, acc_A,acc_A_LL,acc_A_HH))
     else:
         logger.info('Attack Finish, eps= {} Acc=({:.2f}%), acc_A =({:.2f}%)'.format(
-        eps_v,100. * acc, 100. *acc_A))
+        eps_v, acc, acc_A))
     return acc,acc_A,acc_A_LL,acc_A_HH
     
 
@@ -218,19 +219,20 @@ if __name__ == "__main__":
                                          model,
                                          args['optimizer']['lr'],
                                          args['optimizer']['weight_decay'])
-        model_path = args['train']['checkpoint_path']+'/'+model_name+'.pth'
-        # if no model exist, do training
-        if not os.path.isfile(model_path):
-            input()
-            train_single_model(args,model_name,train_dataloader,test_dataloader,logger)
-        else:
-            model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger)
+        # model_path = args['train']['checkpoint_path']+'/'+model_name+'.pth'
+        # # if no model exist, do training
+        # if not os.path.isfile(model_path):
+        #     input()
+        #     train_single_model(args,model_name,train_dataloader,test_dataloader,logger)
+        # else:
+        print_model(model)
+        model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger,device)
         
         #print("start_epoch",start_epoch)
         model.eval() 
         gradients = None
         
-        #print_model(model)
+        
         
         
         
