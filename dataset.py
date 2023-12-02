@@ -1,6 +1,7 @@
 #TODO
 import torch
 from torchvision import datasets, transforms
+import torch.nn.functional as F
 
 import pywt
 import copy
@@ -39,8 +40,11 @@ def get_dataset(batch_size, num_workers):
 
  
 def get_wavelet(image):
-    
-    LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')#inputs(batch,3,224,224)
+        
+    if torch.cuda.is_available():
+        LL, (LH, HL, HH) = pywt.dwt2(image.cpu().detach().numpy(),'haar')#inputs(batch,3,224,224)
+    else:
+        LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')#inputs(batch,3,224,224)
     # print (torch.min(inputs[0,:,:,:]),torch.max(inputs[0,:,:,:]))
     # print (LH.min(),LH.max(),len(LH))
     # for i,a in enumerate([LL, LH, HL, HH]):  #3,114,114
@@ -54,7 +58,8 @@ def get_wavelet(image):
     # plt.show()
     LL = (LL-LL.min())/(LL.max()-LL.min())      #range[0,1]
     HH = (HH-HH.min())/(HH.max()-HH.min())      #range[0,1]
-
+    LL = F.interpolate(torch.tensor(LL),mode='area',size=[224,224])
+    HH = F.interpolate(torch.tensor(HH),mode='area',size=[224,224])
     return torch.tensor(LL),torch.tensor(HH)
 
 def FGSM (image, eps_v,data_grad):
