@@ -34,19 +34,23 @@ def load_model(model,path,model_name):
         os.makedirs(os.path.join(path,model_name))
     return model
 
-def load_checkpoint(model,model_name, optimizer, scheduler, path, logger):
+def load_checkpoint(model,model_name, optimizer, scheduler, path, logger,device):
     '''
     Load checkpoint file
     '''
 
-    if os.listdir(path) and os.listdir(os.path.join(path,model_name)):
-        file_path = sorted(glob(os.path.join(path, '*.pth')))[0]
-        checkpoint = torch.load(file_path, map_location='cpu')
+    # if os.listdir(path) and os.listdir(os.path.join(path,model_name)):
+    filepath=os.path.join(path,model_name)
+    if os.listdir(filepath):
+        file_path = sorted(glob(os.path.join(filepath, '*.pth')))[0]
+        print("model file path:",file_path)
+        # checkpoint = torch.load(file_path, map_location='cpu') 
+        checkpoint = torch.load(file_path, map_location=device) 
         model.load_state_dict(checkpoint['model'])
         epoch = checkpoint.pop('startEpoch')
         optimizer.load_state_dict(checkpoint.pop('optimizer'))
         scheduler.load_state_dict(checkpoint.pop('scheduler'))
-        logger.info('=> Continuing training routine. Checkpoint loaded at {}'.format(file_path))
+        logger.info('Checkpoint loaded at {}'.format(file_path))
         return model, optimizer, scheduler, epoch
     else:
         print('=> No checkpoint. Initializing model from scratch')
