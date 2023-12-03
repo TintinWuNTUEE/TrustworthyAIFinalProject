@@ -1,5 +1,6 @@
-#models: ['resnet18','resnet50','vit-s','vit-t','cvt']
-models: ['resnet18']
+# models: ['resnet18','resnet50','vit-s','vit-t','hybrid-s']
+models: ['vit-s','vit-t','hybrid-s']
+#models: ['resnet18']
 train: 
   batch_size: 64
   num_workers: 8
