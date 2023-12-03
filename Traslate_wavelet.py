@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from logger import get_logger
+from utils.hog import mask_hog
 import os
 import copy
 import pywt
@@ -137,12 +138,13 @@ def attack(data_loader,A_name):
     acc_A_HH = 200
     logger.info('Attack start')
     filter = 1
-    
+    hog = 1
     for batch_idx, (data, target) in enumerate(data_loader):
 
         data, target =data.to(device), target.to(device) 
         
         data.requires_grad = True
+        print ("data range:",torch.min(data[0,:,:,:]),"-",torch.max(data[0,:,:,:]))
         output= model(data)
         loss =  criterion(output, target)
         #print("OutputSize",output.size())
@@ -178,7 +180,51 @@ def attack(data_loader,A_name):
         
             correct_A_LL += pred_A_LL.eq(target).sum()#.item()
             correct_A_HH  += pred_A_HH.eq(target).sum()#.item()
-    
+        if hog ==1 :
+            # data_hog = mask_hog(data_A)
+            hog_mask,hog_mask_rgb,img_hog_mask_rgb= mask_hog(data_A[0,:,:,:])
+            pic_all=[ hog_mask, hog_mask_rgb, img_hog_mask_rgb]
+            pic_all_t=[ 'hog_mask', 'hog_mask_rgb', 'img_hog_mask_rgb']
+            fig=plt.figure()
+            
+            for id,a in enumerate(pic_all):  #3,114,114
+                ax = fig.add_subplot(len(pic_all)+2, 2, (id<<1) + 1)
+                print(pic_all_t[id]," range: ",a.max(),"-",a.min())
+                a=(a-a.min())/(a.max()-a.min())
+                
+                # ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+                ax.imshow(a,vmin=0,vmax=1)
+                ax.set_title(pic_all_t[id], fontsize=10)
+                # print(pic_all_t[id],type(a))
+                print(pic_all_t[id],a.shape)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                if id==0:
+                    a[a>0]=1
+                    ax = fig.add_subplot(len(pic_all)+2, 2, 2)
+                    ax.hist(a.flatten(), linewidth=0.5, edgecolor="white")
+                    ax.set_title(pic_all_t[id]+" hist", fontsize=10)
+                    a_mask = np.array([a]*3)*data_A[0,:,:,:].cpu().detach().numpy()
+                    ax = fig.add_subplot(len(pic_all)+2, 2, 4)
+                    ax.imshow(np.transpose(a_mask,(1,2,0)),vmin=0,vmax=1)
+                    ax.set_title("image with mask", fontsize=10)
+            
+            pic_all_ori = [data,data_A]
+            pic_all_ori_t = ['data','data_A']
+            for id,a in enumerate(pic_all_ori):  #3,114,114
+                ax = fig.add_subplot(len(pic_all)+2, 2, ((id +len(pic_all))<<1 )+ 1)
+                a=(a-a.min())/(a.max()-a.min())
+                a = a[0,:,:,:].cpu().detach().numpy()
+                ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+                # ax.imshow(a,vmin=0,vmax=1)
+                ax.set_title(pic_all_ori_t[id], fontsize=10)
+                ax.set_xticks([])
+                ax.set_yticks([])
+            fig.tight_layout()
+            plt.show()
+            save_path = os.path.join(pathToFigure, f'hogData.jpg')
+            plt.savefig(save_path)
+            input()
     if filter==1:
         acc_A_LL = 100.*correct_A_LL/total
         acc_A_HH = 100.*correct_A_HH/total
@@ -290,15 +336,13 @@ if __name__ == '__main__':
     loss_test,acc_test = test(test_loader)                      #calculate acc
     
 
-    plt.figure(figsize = (4,5))
+    # plt.figure(figsize = (4,5))
     
    
     
-    pathToFigure = 'Figure'
-    if not os.path.isdir(pathToFigure):
-        os.mkdir(pathToFigure)
-
-    fig=plt.figure(figsize = (5,10))
+    
+    # 
+    
     acc,acc_A,acc_A_LL,acc_A_HH = attack(test_loader,'FGSM')
     
     """
@@ -308,7 +352,7 @@ if __name__ == '__main__':
     classes=40
     train_LL = copy.deepcopy(train_loader)
     train_HH = copy.deepcopy(train_loader)
-
+    fig=plt.figure(figsize = (5,10))
     for i in range(10):
         #for batch_idx, (inputs,targets) in enumerate(test_loader):
         #print("loader samples=",train_loader.dataset._samples[0])
