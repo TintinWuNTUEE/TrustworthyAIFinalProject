@@ -327,7 +327,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
             #     print(pic_all_t[id],a.shape)
                 ax.set_xticks([])
                 ax.set_yticks([])
-            ini = id+1
+            ini = id
                 
             
             
@@ -415,7 +415,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
                 save_path = os.path.join(pathToFigure, f'hogData.jpg')
                 plt.savefig(save_path)
         
-           
+          
             
                 
 
