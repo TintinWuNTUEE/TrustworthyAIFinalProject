@@ -134,11 +134,11 @@ def FGSM (image, eps_v,data_grad):
     # print(image.size())
     attack_i = image + n
     attack_i = torch.clamp(attack_i,0,1) #limit the value between 0 and 1
-    return attack_i    
+    return attack_i,n   
 def normalize(img):
     img=(img-img.min())/(img.max()-img.min())
     return img
-def attack(data_loader,A_name):
+def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
 
     
     total = 0
@@ -149,10 +149,13 @@ def attack(data_loader,A_name):
     acc_A_LL = 200
     acc_A_HH = 200
     logger.info('Attack start')
-    filter = 1
-    hog = 1
-    acc_hog_f_list=[]
+    # filter = 1
+    # hog = 0
+    name_hog_f_list=[]
     correct_hog_f_list =[]
+    name_f_list=[]
+    correct_f_list=[]
+    # correct_class=[[] for i in range(43)]
     for batch_idx, (data, target) in enumerate(data_loader):
 
         data, target =data.to(device), target.to(device) 
@@ -169,20 +172,35 @@ def attack(data_loader,A_name):
         loss.backward(retain_graph=True)
         _, pred = output.max(1) #normal data classified result
         correct += pred.eq(target).sum()#.item()
-        
+        # correct_class[target][0]+= pred.eq(target).sum()
         # if batch_idx <10:
         #     print("target=",target)
         #     print("predict = ",pred)
         total += target.size(0)
+        
         if(A_name=='FGSM'):
-            eps_v = 0.015
-            data_A = FGSM (data ,eps_v,data.grad.data)
+            # eps_v = 0.015
             
-        if hog==0:
-            output_A = model(data_A)       #沒用到mask
-            _, pred_A = output_A.max(1)
-            
-            correct_A += pred_A.eq(target).sum()#.item()
+            data_A,noise = FGSM (data ,eps_v,data.grad.data)
+            noise_LL,noise_HH = get_wavelet(noise)
+            data_A_noise_LL =normalize( data + noise_LL.to(device))
+            data_A_noise_HH =normalize( data + noise_HH.to(device))
+
+        
+        # ini=0
+        # output_A = model(data_A)       #沒用到mask
+        # _, pred_A = output_A.max(1)
+        # correct_A += pred_A.eq(target).sum()#.item()
+        if batch_idx==0:
+            name_f_list=['data_A','data_A_noise_LL','data_A_noise_HH']
+        for id,a in enumerate([data_A,data_A_noise_LL,data_A_noise_HH]):  
+            output = model(a.to(device))
+            _, pred = output.max(1)
+            if batch_idx==0:
+                correct_f_list.append(pred.eq(target).sum())
+                
+            else:
+                correct_f_list[id]+=pred.eq(target).sum()
         
         
         
@@ -199,12 +217,13 @@ def attack(data_loader,A_name):
                 correct_A_LL += pred_A_LL.eq(target).sum()#.item()
                 correct_A_HH  += pred_A_HH.eq(target).sum()#.item()
         if hog ==1 :
+            ini = 0
             # data_hog = mask_hog(data_A)
             hog_mask,hog_mask_rgb,img_hog_mask_rgb= mask_hog(data_A[0,:,:,:])
             
             
-            pic_all_ori = [data,data_A]
-            pic_all_ori_t = ['data','data_A']
+            pic_all_ori = [data]
+            pic_all_ori_t = ['data']
             if batch_idx==0:
                 fig=plt.figure()
                 for id,a in enumerate(pic_all_ori):  #3,114,114
@@ -215,37 +234,52 @@ def attack(data_loader,A_name):
                     ax.set_title(pic_all_ori_t[id], fontsize=10)
                     ax.set_xticks([])
                     ax.set_yticks([])
-            hog_mask=normalize(hog_mask)
-            hog_mask[hog_mask>0]=1
-            hog_mask_bar= 1-hog_mask
-            output = model(torch.tensor(np.array([hog_mask]*3)).unsqueeze(0).to(device))
-            _, pred = output.max(1)
-            if batch_idx==0:
+            # hog_mask=normalize(hog_mask)
+            # hog_mask[hog_mask>0]=1
+            img_hog_mask_rgb = normalize(img_hog_mask_rgb) 
+            img_hog_mask_rgb = np.transpose(img_hog_mask_rgb,(2,0,1))
+            hog_mask_rgb =normalize(hog_mask_rgb) #224,224,3
+            hog_mask_rgb = np.transpose(hog_mask_rgb,(2,0,1))#3,224,224
+            # hog_mask_rgb_m=hog_mask_rgb.copy()
+            # hog_mask_rgb_m[hog_mask_rgb_m>0]=1
+            hog_mask_bar= 1-hog_mask_rgb
+            
+            
                 
-                correct_hog_f_list.append(pred.eq(target).sum())
-                pic_all=[ hog_mask]#, hog_mask_rgb, img_hog_mask_rgb]
-                pic_all_t=[ 'hog_mask']#, 'hog_mask_rgb', 'img_hog_mask_rgb']
-                for id,a in enumerate(pic_all):  #3,114,114
-                  ax = fig.add_subplot(5, 3, (id) + 3)
-                #   print(pic_all_t[id]," range: ",a.max(),"-",a.min())
                 
-
-                  # ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
-                  ax.imshow(a,vmin=0,vmax=1)
-                  ax.set_title(pic_all_t[id], fontsize=10)
-                  # print(pic_all_t[id],type(a))
-                #   print(pic_all_t[id],a.shape)
-                  ax.set_xticks([])
-                  ax.set_yticks([])
-            else:
-                correct_hog_f_list[0]+=pred.eq(target).sum()
+            # hog_mask = np.array([hog_mask]*3)
+            pic_all=[ hog_mask_rgb,img_hog_mask_rgb]#, hog_mask_rgb, img_hog_mask_rgb]
+            pic_all_t=[ 'hog_mask_rgb','img_hog_mask_rgb']#, 'hog_mask_rgb', 'img_hog_mask_rgb']
+            for id,a in enumerate(pic_all):  
+                output = model(torch.tensor(a).unsqueeze(0).to(device))
+                _, pred = output.max(1)
+                if batch_idx==0:
+                    correct_hog_f_list.append(pred.eq(target).sum())
+                    name_hog_f_list.append(pic_all_t[id])
+                else:
+                    correct_hog_f_list[id]+=pred.eq(target).sum()
+                ax = fig.add_subplot(5, 3, (id) + 2)
+            #   print(pic_all_t[id]," range: ",a.max(),"-",a.min())
+                
+              # ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+                if a.shape[2]==3:
+                    ax.imshow(a,vmin=0,vmax=1)
+                else:
+                  ax.imshow(np.transpose(a,(1,2,0)),vmin=0,vmax=1)
+                ax.set_title(pic_all_t[id], fontsize=10)
+                # print(pic_all_t[id],type(a))
+            #     print(pic_all_t[id],a.shape)
+                ax.set_xticks([])
+                ax.set_yticks([])
+            ini = id+1
+                
             
             
             # ax = fig.add_subplot(len(pic_all)+2, 2, 2)
             # ax.hist(a.flatten(), linewidth=0.5, edgecolor="white")
             # ax.set_title(pic_all_t[id]+" hist", fontsize=10)
-            data_A_mask = np.array([hog_mask]*3)*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
-            data_A_bar_mask = np.array([hog_mask_bar]*3)*data_A[0,:,:,:].cpu().detach().numpy()
+            data_A_mask = hog_mask_rgb*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
+            data_A_bar_mask = hog_mask_bar*data_A[0,:,:,:].cpu().detach().numpy()
             # print('data_A_mask shape = ',data_A_mask.shape)
             # print('data_A_bar_mask shape = ',data_A_bar_mask.shape)
             data_A_m1_LL,data_A_m1_HH =get_wavelet(data_A_mask)
@@ -292,13 +326,15 @@ def attack(data_loader,A_name):
             
             
             for id,a in enumerate(pic_all):
-                a=a.to(device)
-                # print(pic_all_t[id])
-                output = model(a)
+                if pic_all_t[id]!='data_A':
+                    a=a.to(device)
+                    # print(pic_all_t[id])
+                    output = model(a)
                 _, pred = output.max(1)
                 if batch_idx==0:
-                    
-                    correct_hog_f_list.append(pred.eq(target).sum())
+                    if pic_all_t[id]!='data_A':
+                        correct_hog_f_list.append(pred.eq(target).sum())
+                        name_hog_f_list.append(pic_all_t[id])
                     ax = fig.add_subplot(5, 3, (id) + 4)
                     if torch.is_tensor(a):
                         if a.device == 'cpu':
@@ -315,39 +351,41 @@ def attack(data_loader,A_name):
                     ax.set_xticks([])
                     ax.set_yticks([])
                 else:
-                    correct_hog_f_list[id+1]+=pred.eq(target).sum()
+                    correct_hog_f_list[id+ini]+=pred.eq(target).sum()
                     
             if batch_idx==0:
                 fig.tight_layout()
                 # plt.show()
                 save_path = os.path.join(pathToFigure, f'hogData.jpg')
                 plt.savefig(save_path)
+      
+           
             
                 
 
     acc = 100.*correct/total
-    acc_A = 100.*correct_A/total       
-    if filter==1 :
+    # acc_A = 100.*correct_A/total  
+    strg=model_name+'Attack Finish, eps= {} Acc=({:.2f}%) \n'.format(
+            eps_v, acc) 
+      
+    for id,correct_ele in enumerate(correct_f_list): 
+            strg=strg+'acc_'+name_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
+    if filter ==1:  
 
         acc_A_LL = 100.*correct_A_LL/total
         acc_A_HH = 100.*correct_A_HH/total
-        if hog ==0 :
+        
+        strg=strg+'acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(acc_A_LL,acc_A_HH)
             
-            logger.info('Attack Finish, eps= {} Acc=({:.2f}%), acc_A =({:.2f}%), acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(
-            eps_v, acc, acc_A,acc_A_LL,acc_A_HH))
-        else:
-            strg=model_name+' Attack Finish, eps= '+eps_v+' Acc=({:.2f}%),'.format(acc)
-            for id,acc_ele in enumerate(acc_hog_f_list): 
-                if id ==0:
-                    strg=strg+'acc_hog_mask = ({:.2f}%),\n'.format(100.*acc_ele/total)
-                else:
-                    strg=strg+'acc_'+pic_all_t[id-1]+' = ({:.2f}%)\n'.format(100.*acc_ele/total)
-            logger.info(strg)
-
-    else:
-        logger.info('Attack Finish, eps= {} Acc=({:.2f}%), acc_A =({:.2f}%)'.format(
-        eps_v, acc, acc_A))
-    return acc,acc_A,acc_A_LL,acc_A_HH
+        if hog==1:
+            #  strg=strg+model_name+' Attack Finish, eps= = {} Acc=({:.2f}%),'.format(eps_v, acc)
+            for id,correct_ele in enumerate(correct_hog_f_list): 
+                strg=strg+'acc_'+name_hog_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
+            
+    logger.info(strg)
+    
+        
+    return acc
 
 if __name__ == '__main__':   
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
@@ -447,7 +485,7 @@ if __name__ == '__main__':
         model.load_state_dict(torch.load(model_name))          #一般正常load model方式
     
 
-    loss_test,acc_test = test(test_loader)                      #calculate acc
+    # loss_test,acc_test = test(test_loader)                      #calculate acc
     
 
     # plt.figure(figsize = (4,5))
@@ -457,7 +495,7 @@ if __name__ == '__main__':
     
     # 
     
-    acc,acc_A,acc_A_LL,acc_A_HH = attack(test_loader,'FGSM')
+    acc = attack(test_loader,'FGSM',filter=1)
     
     """
     titles = ['Approximation', ' Horizontal detail',
