@@ -443,14 +443,14 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
         
     return acc
 
-def backward_hook(module, grad_input, grad_output): 
-    global gradients # refers to the variable in the global scope 
+# def backward_hook(module, grad_input, grad_output): 
+#     global gradients # refers to the variable in the global scope 
 
  
-    gradients=grad_input
-    #print("grad_input",grad_input)
+#     gradients=grad_input
+#     #print("grad_input",grad_input)
 
-    return grad_input        
+#     return grad_input        
 
 if __name__ == "__main__":
     
