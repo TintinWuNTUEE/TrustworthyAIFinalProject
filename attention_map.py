@@ -1,8 +1,6 @@
 import numpy as np
-import cv2
-import torch
+import cv2 
 import timm
-from torchvision import transforms
 
 from dataset import get_dataset
 from utils.attention_rollout import VITAttentionGradRollout
