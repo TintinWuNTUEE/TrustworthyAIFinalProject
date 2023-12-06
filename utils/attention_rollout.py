@@ -6,8 +6,6 @@ def grad_rollout(attentions, gradients, discard_ratio):
     with torch.no_grad():
         for attention, grad in zip(attentions, gradients):                
             weights = grad
-            print(attention.shape)
-            print(grad.shape)
             attention_heads_fused = (attention*weights).mean(axis=1)
             attention_heads_fused[attention_heads_fused < 0] = 0
 
@@ -22,29 +20,27 @@ def grad_rollout(attentions, gradients, discard_ratio):
             a = (attention_heads_fused + 1.0*I)/2
             a = a / a.sum(dim=-1)
             result = torch.matmul(a, result)
-    
-    # Look at the total attention between the class token,
-    # and the image patches
-    mask = result[0, 0 , 1 :]
-    # In case of 224x224 image, this brings us from 196 to 14
-    width = int(mask.size(-1)**0.5)
-    mask = mask.reshape(width, width).numpy()
-    mask = mask / np.max(mask)
-    return mask    
+
+    width = int((result.numel())**0.5)
+    print(result.shape)
+    print(width)
+    result = result.reshape(width, width).numpy()
+    result = result / np.max(result)
+    return result  
 
 class VITAttentionGradRollout:
-    def __init__(self, model, attention_layer_name='attn_drop',
+    def __init__(self, model, attention_layer_name='proj_drop',
         discard_ratio=0.9):
         self.model = model
         self.discard_ratio = discard_ratio
+        self.attentions = []
+        self.attention_gradients = []
         for name, module in self.model.named_modules():
-            # print(name)
             if attention_layer_name in name:
                 module.register_forward_hook(self.get_attention)
                 module.register_full_backward_hook(self.get_attention_gradient)
 
-        self.attentions = []
-        self.attention_gradients = []
+
 
     def get_attention(self, module, input, output):
         self.attentions.append(output.cpu())
@@ -59,6 +55,5 @@ class VITAttentionGradRollout:
         category_mask[:, category_index] = 1
         loss = (output*category_mask).sum()
         loss.backward()
-        print(self.attentions)
         return grad_rollout(self.attentions, self.attention_gradients,
             self.discard_ratio)
