@@ -327,7 +327,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
             #     print(pic_all_t[id],a.shape)
                 ax.set_xticks([])
                 ax.set_yticks([])
-            ini = id
+            ini = id+1
                 
             
             
@@ -402,12 +402,14 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
                     # ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
                     ax.imshow(np.transpose(a,(1,2,0)),vmin=0,vmax=1)
                     ax.set_title(pic_all_t[id], fontsize=10)
+                    #print('ini',ini)
                     # print(pic_all_t[id],type(a))
                     # print(pic_all_t[id],a.shape)
                     ax.set_xticks([])
                     ax.set_yticks([])
                 else:
-                    correct_hog_f_list[id+ini]+=pred.eq(target).sum()
+                    if pic_all_t[id]!='data_A':
+                        correct_hog_f_list[id+ini-1]+=pred.eq(target).sum()
                     
             if batch_idx==0:
                 fig.tight_layout()
@@ -415,7 +417,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
                 save_path = os.path.join(pathToFigure, f'hogData.jpg')
                 plt.savefig(save_path)
         
-          
+         
             
                 
 
@@ -427,13 +429,13 @@ def attack(data_loader,A_name,eps_v=0.015,filter=0,hog=0):
     for id,correct_ele in enumerate(correct_f_list): 
             strg=strg+'acc_'+name_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
     if filter ==1:  
-
-        acc_A_LL = 100.*correct_A_LL/total
-        acc_A_HH = 100.*correct_A_HH/total
+        if hog ==0:
+            acc_A_LL = 100.*correct_A_LL/total
+            acc_A_HH = 100.*correct_A_HH/total
         
-        strg=strg+'acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(acc_A_LL,acc_A_HH)
+            strg=strg+'acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)\n'.format(acc_A_LL,acc_A_HH)
             
-        if hog==1:
+        else:
             # strg=strg+model_name+' Attack Finish, eps= = {} Acc=({:.2f}%),'.format(eps_v, acc)
             for id,correct_ele in enumerate(correct_hog_f_list): 
                 strg=strg+'acc_'+name_hog_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
