@@ -3,8 +3,9 @@ import torch
 from torchvision import datasets, transforms
 import torch.nn.functional as F
 
-import pywt
+# import pywt
 import copy
+import matplotlib.pyplot as plt
 def get_dataset(batch_size, num_workers):
     train_loader = torch.utils.data.DataLoader(
         datasets.GTSRB(
@@ -53,9 +54,12 @@ def get_wavelet(image):
     #     LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')#inputs(batch,3,224,224)
     # print (torch.min(inputs[0,:,:,:]),torch.max(inputs[0,:,:,:]))
     # print (LH.min(),LH.max(),len(LH))
+    # fig=plt.figure()
+    # titles = ['Approximation', ' Horizontal detail',
+    #       'Vertical detail', 'Diagonal detail']
     # for i,a in enumerate([LL, LH, HL, HH]):  #3,114,114
     #     ax = fig.add_subplot(1, 4, i + 1)
-        #  a=(a-a.min())/(a.max()-a.min())
+    #     a=(a-a.min())/(a.max()-a.min())
     #     ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
     #     ax.set_title(titles[i], fontsize=10)
     #     ax.set_xticks([])
