@@ -6,15 +6,16 @@ import torch.nn.functional as F
 # import pywt
 import copy
 import matplotlib.pyplot as plt
-def get_dataset(batch_size, num_workers):
+transform=transforms.Compose([
+                        transforms.Resize([224, 224]),
+                        transforms.ToTensor(),])
+def get_dataset(batch_size, num_workers,transform=transform):
     train_loader = torch.utils.data.DataLoader(
         datasets.GTSRB(
             "./data",
             split="train",
             download=True,
-            transform=transforms.Compose([
-                        transforms.Resize([224, 224]),
-                        transforms.ToTensor(),]),         
+            transform=transform        
         ),
         batch_size=batch_size,
         shuffle=True, 
@@ -25,9 +26,7 @@ def get_dataset(batch_size, num_workers):
             "./data",
             split="test",
             download=True,
-            transform=transforms.Compose([
-                        transforms.Resize([224, 224]),
-                        transforms.ToTensor(),]),
+            transform=transform
         ),
         batch_size=1,
         shuffle=False, 

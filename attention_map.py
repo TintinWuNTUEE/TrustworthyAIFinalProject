@@ -3,7 +3,7 @@ import cv2
 import timm
 
 from dataset import get_dataset
-from utils.attention_rollout import VITAttentionGradRollout
+from common.attention_rollout import VITAttentionGradRollout
 
 def show_mask_on_image(img, mask):
     img = np.float32(img) / 255

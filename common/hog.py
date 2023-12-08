@@ -1,11 +1,9 @@
 import cv2
 import numpy as np
 from skimage.feature import hog
-
 import torch
-def pil2cv2_grayscale(img):
-    img = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
-    return img
+
+from .utils import pil2cv2_grayscale
 def get_hog(img):
     img_gray = pil2cv2_grayscale(img)
     normalised_blocks, hog_image = hog(img_gray,
