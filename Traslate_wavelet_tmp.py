@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from logger import get_logger
-from common.hog import mask_hog
+from utils.hog import mask_hog
 import os
 import copy
 import pywt
@@ -93,7 +93,7 @@ def test(dataloader):
     # Save checkpoint.
    
     return test_loss/total, acc
-def get_wavelet(image):           #dataset.py
+def get_wavelet(image):
         if torch.is_tensor(image):
             if image.device == 'cpu':
                 LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')
@@ -129,7 +129,7 @@ def get_wavelet(image):           #dataset.py
             HH = F.interpolate(torch.tensor(HH).unsqueeze(0),mode='area',size=[224,224])
         # return torch.tensor(LL),torch.tensor(HH)
         return LL,HH
-def FGSM (image, eps_v,data_grad):          #train.py
+def FGSM (image, eps_v,data_grad):
     n=eps_v*data_grad.sign()
     # print(SignGrad.type())
     # print(SignGrad.size())
@@ -139,7 +139,7 @@ def FGSM (image, eps_v,data_grad):          #train.py
     attack_i = torch.clamp(attack_i,0,1) #limit the value between 0 and 1
     return attack_i,n  
 
-def iFGSM(image,label, eps_v,num_iter=20):  #train.py
+def iFGSM(image,label, eps_v,num_iter=20):
     # alpha and num_iter can be decided by yourself, I just quick set a value
     # alpha = eps_v/num_iter/100 
     alpha=1/255   
@@ -162,19 +162,17 @@ def iFGSM(image,label, eps_v,num_iter=20):  #train.py
         attack_i = torch.max(torch.min(attack_i, image+eps_v), image-eps_v) # clip new x_adv back to [x-epsilon, x+epsilon]
     n=attack_i-image
     return attack_i,n
-def normalize(img):              #utils.py
+def normalize(img):
     img=(img-img.min())/(img.max()-img.min())
     return img
-def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):   #utils.py
+def pic(pic_l,pic_l_t,row,col,figname,title,filename=None,cmap=0):
     fig=plt.figure()
     for id,a in enumerate(pic_l):  
-        # print('subplot ',pic_l_t[id])
-        ax = fig.add_subplot(row, col, id+1)
+        ax = fig.add_subplot(row, col, id)
         if torch.is_tensor(a):
-            if a.device == 'cpu':
-                a=a.detach().numpy()
-            else:
-                a=a.cpu().detach().numpy()
+            a=a.detach().numpy()
+        else:
+            a=a.cpu().detach().numpy()
         if a.ndim==4:
             a=a[0,:,:,:]
         if a.shape[2]==3:
@@ -189,19 +187,24 @@ def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):   #utils.py
     
     plt.suptitle(title)
     if filename==None:
-        filename=title+'.jpg'
-    fig.tight_layout()
-    # plt.show()
+        filename=title
     save_path = os.path.join(pathToFigure, filename)
     plt.savefig(save_path)
         
-def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
+def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): 
+#filter=(1:wavelet),(2:jpeg)
 
     
     total = 0
     correct = 0
+    correct_A =0
+    correct_A_LL = 0
+    correct_A_HH = 0
+    acc_A_LL = 200
+    acc_A_HH = 200
     logger.info('Attack start'+model_name+ ' '+A_name)
-
+    # filter = 1
+    # hog = 0
     name_hog_f_list=[]
     correct_hog_f_list =[]
     name_f_list=[]
@@ -213,17 +216,24 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
         data_for_attack=data.detach().clone()
         data_for_attack.requires_grad = True
         data.requires_grad = True
+        # print ("data range:",torch.min(data[0,:,:,:]),"-",torch.max(data[0,:,:,:]))
         output= model(data)
         loss =  criterion(output, target)
-
+        #print("OutputSize",output.size())
+        #print("loss=",loss)
+        #print("Output",output)
         model.zero_grad() #zero all existing gradients
         optimizer.zero_grad() #zero all existing gradients
         loss.backward()
         # loss.backward(retain_graph=True)
-
+        # print('after',data.grad.data)
+        # loss.backward()
         _, pred = output.max(1) #normal data classified result
         correct += pred.eq(target).sum()#.item()
-
+        # correct_class[target][0]+= pred.eq(target).sum()
+        # if batch_idx <10:
+        #     print("target=",target)
+        #     print("predict = ",pred)
         total += target.size(0)
         match A_name:
 
@@ -233,11 +243,16 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                 data_A,noise = iFGSM (data_for_attack,target ,eps_v)
             case _:
                 print("no this kind of attack mode!!")
-                return None
         noise_LL,noise_HH = get_wavelet(noise)
         data_A_noise_LL =normalize( data + noise_LL.to(device))
         data_A_noise_HH =normalize( data + noise_HH.to(device))
-
+        # data_A_mean =torch.mean(data_A)
+        # data_A_mean = data_A_mean.unsqueeze(1).expand(-1, 3, -1, -1)
+        
+        # ini=0
+        # output_A = model(data_A)       #沒用到mask
+        # _, pred_A = output_A.max(1)
+        # correct_A += pred_A.eq(target).sum()#.item()
         if batch_idx==0:
             fig=plt.figure()
             noise_norm=normalize(noise)
@@ -256,66 +271,169 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                 fig.tight_layout()
             save_path = os.path.join(pathToFigure, f'{A_name}_data_noise_rgb.jpg')
             plt.savefig(save_path)
-       
-        
-            pic_all=[data_A,data_A_noise_LL,data_A_noise_HH,data,normalize(noise),normalize(noise_LL),normalize(noise_HH)]
+        ini=3
+        if batch_idx==0:
             pic_t=['data_A','data_A_noise_LL','data_A_noise_HH','data','noise','noise_LL','noise_HH']
-            pic(pic_all,pic_t,2,4,title=A_name+'_noise_'+filter) 
-            
-            name_f_list=pic_t[:3]
-        
-        correct_f_ini=0   
-        for id,a in enumerate([data_A,data_A_noise_LL,data_A_noise_HH]):  
-
-            output = model(a.to(device))
-            _, pred = output.max(1)
+            name_f_list=pic_t[:ini]
+            fig=plt.figure()
+        for id,a in enumerate([data_A,data_A_noise_LL,data_A_noise_HH,data,normalize(noise),normalize(noise_LL),normalize(noise_HH)]):  
+            if id<3:
+                output = model(a.to(device))
+                _, pred = output.max(1)
             if batch_idx==0:
+                if id<3:
+                    correct_f_list.append(pred.eq(target).sum())
+                ax = fig.add_subplot(2,4, id+ 1)
+                a = a[0,:,:,:].cpu().detach().numpy()
+                ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+                ax.set_title(pic_t[id], fontsize=10)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                fig.tight_layout()
+                # plt.show()
                 
-                correct_f_list.append(pred.eq(target).sum())     #correct_f_list start
                 
             else:
-                
-                correct_f_list[id]+=pred.eq(target).sum()
-        correct_f_ini=correct_f_ini+id+1
-
-
-        if hog==1:
-            hog_mask= mask_hog(data_A[0,:,:,:]) 
-            hog_mask_rgb = normalize(np.array([hog_mask]*3) )  #3,224,224
-            hog_mask_bar= 1-hog_mask 
-            #m1_1
-            data_A_mask = hog_mask_rgb*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
-            #m0_1
-            data_A_bar_mask = hog_mask_bar*data_A[0,:,:,:].cpu().detach().numpy()
-
-
+                if id<3:
+                    correct_f_list[id]+=pred.eq(target).sum()
+        if batch_idx==0:
+            save_path = os.path.join(pathToFigure, f'{A_name}_noise_filter.jpg')
+            plt.savefig(save_path)
+        # data_A=data_A_noise_LL
+        
         match filter:
-            
-            case  'wavelet':
-
+            case 'wavelet':
+                
                 data_A_LL,data_A_HH = get_wavelet(data_A)
-                data_A_LL,data_A_HH=normalize(data_A_LL.to(device)),normalize(data_A_HH.to(device))    #沒用到mask
-                if batch_idx==0:
-                    pic_all=[data_A,data_A_LL,data_A_HH]
-                    pic_t=['data_A','data_A_LL','data_A_HH']
-                    pic(pic_all,pic_t,1,3,title=A_name+'_defense_'+filter) 
-                    name_f_list.extend(['data_A_LL','data_A_HH'])
+                data_A_LL,data_A_HH=normalize(data_A_LL.to(device)),normalize(data_A_HH.to(device))  #沒用到mask
+                # data_A_grb=data_A[:, [1, 2, 0], :, :]
+                # # print(data_A_grb.size())
+                # data_A_grb_LL,data_A_grb_HH = get_wavelet(data_A_grb)
+                # data_A_grb_LL,data_A_grb_HH = normalize(data_A_grb_LL.to(device)),normalize(data_A_grb_HH.to(device))
+                
+                # blurer= v2.GaussianBlur(kernel_size=9, sigma=( 5.))
+                # data_A_blur = blurer(data_A)
+                # data_A_blur_LL,data_A_blur_HH = get_wavelet(data_A_blur)
+                # data_A_blur_LL,data_A_blur_HH = normalize(data_A_blur_LL.to(device)),normalize(data_A_blur_HH.to(device))
+                if hog ==0:
+                    data_A_meanRGB = torch.mean(data_A,dim=[2,3])
+                    data_A_mean=torch.mean(data_A_meanRGB,dim=1)
+                    data_A_meanRGB = data_A_meanRGB.unsqueeze(2).unsqueeze(2).expand(-1, -1,224,224)
+                    # print('data_A_meanRGB size',data_A_meanRGB.size(),' data_A_meanRGB= ',data_A_meanRGB[0,:,0:2,0:2]) 
+                    data_A_miti = data_A_mean/data_A_meanRGB*data_A
+                
                     
-                    print('correct_f_ini=',correct_f_ini)
-                for id,a in enumerate([data_A_LL,data_A_HH]):
-                    output = model(a.to(device))
-                    _, pred = output.max(1)
+                # print('data_A_jpeg type:',type(data_A_jpeg),'\n shape',data_A_jpeg.size())
+                
                     if batch_idx==0:
-                        correct_f_list.append(pred.eq(target).sum()) 
-                    else:
-                        correct_f_list[id+correct_f_ini]+=pred.eq(target).sum() #前面ini=3個
-                correct_f_ini=correct_f_ini+id+1
+                        logger.info("JPEG quality (30)")
+                        # name_f_list.extend(['data_A_grb','data_A_grb_LL','data_A_grb_HH',
+                        #                 'data_A_blur','data_A_blur_LL','data_A_blur_HH','data_A_LL','data_A_HH'])
+                        name_f_list.extend(['data_A_miti','data_A_jpeg','data_A_LL','data_A_HH'])
+                        fig=plt.figure()
+                    for id,a in enumerate([data_A_miti,data_A_jpeg,data_A_LL,data_A_HH]):
+                        # [data_A_grb,data_A_grb_LL,data_A_grb_HH,
+                        #                    data_A_blur,data_A_blur_LL,data_A_blur_HH,
+                        #                    data_A_LL,data_A_HH]) 
+                        output = model(a.to(device))
+                        _, pred = output.max(1)
+                        if batch_idx==0:
+                            correct_f_list.append(pred.eq(target).sum())
+                            ax = fig.add_subplot(3, 3, id+ 1)
+                            a = a[0,:,:,:].cpu().detach().numpy()
+                            ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+                            ax.set_title(name_f_list[id+ini], fontsize=10)
+                            ax.set_xticks([])
+                            ax.set_yticks([])
+                            fig.tight_layout()
+                            # plt.show()
 
-                if hog==1:
-                    ini = 0
+                        else:
+                            correct_f_list[id+ini]+=pred.eq(target).sum()
+                    if batch_idx==0:
+                        save_path = os.path.join(pathToFigure, f'defense.jpg')
+                        plt.savefig(save_path)
+
+            case 'jpeg':
+                data_A_jpeg =(decode_jpeg(encode_jpeg((data_A[0,:,:,:]*255).to(torch.uint8).cpu(),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
+                
                     
+            case _:
+                print("This is wrong filter type")
+                return None
+            
+            # pic_all_ori = [data]
+            # pic_all_ori_t = ['data']
+            # if batch_idx==0:
+            #     fig=plt.figure()
+            #     for id,a in enumerate(pic_all_ori):  #3,114,114
+                    
+            #         ax = fig.add_subplot(5, 3, id+ 1)
+            #         a = a[0,:,:,:].cpu().detach().numpy()
+            #         ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+            #         ax.set_title(pic_all_ori_t[id], fontsize=10)
+            #         ax.set_xticks([])
+            #         ax.set_yticks([])
+
+            # hog_mask=normalize(hog_mask)
+            # hog_mask[hog_mask>0]=1
+            # img_hog_mask_rgb = normalize(img_hog_mask_rgb) 
+            # img_hog_mask_rgb = np.transpose(img_hog_mask_rgb,(2,0,1))
+        if filter!=None and hog==1:
+            ini = 0
+             # data_hog = mask_hog(data_A)
+            # hog_mask,hog_mask_rgb,img_hog_mask_rgb= mask_hog(data_A[0,:,:,:])
+            # hog_mask_rgb =normalize(hog_mask_rgb) #224,224,3
+            # 
+            # hog_mask_rgb_m=hog_mask_rgb.copy()
+            # hog_mask_rgb_m[hog_mask_rgb_m>0]=1
+            hog_mask_rgb = mask_hog(data_A[0,:,:,:])
+            hog_mask_rgb = normalize(hog_mask_rgb) #224,224,3
+            hog_mask_rgb = np.transpose(hog_mask_rgb,(2,0,1))#3,224,224
+            hog_mask_bar= 1-hog_mask_rgb
+            # hog_mask_rgb=torch.tensor(normalize(hog_mask)).unsqueeze(0)#1,3,224,224
+                
+                
+            # hog_mask = np.array([hog_mask]*3)
+            # pic_all=[ ]#,img_hog_mask_rgb]
+            # pic_all_t=[ 'hog_mask_rgb']#,'img_hog_mask_rgb']
+            # for id,a in enumerate(pic_all):  
+            #     output = model(torch.tensor(a).unsqueeze(0).to(device))
+            #     _, pred = output.max(1)
+            #     if batch_idx==0:
+            #         correct_hog_f_list.append(pred.eq(target).sum())
+            #         name_hog_f_list.append(pic_all_t[id])
+            #     else:
+            #         correct_hog_f_list[id]+=pred.eq(target).sum()
+            #     ax = fig.add_subplot(5, 3, (id) + 2)
+            # #   print(pic_all_t[id]," range: ",a.max(),"-",a.min())
+                
+            #   # ax.imshow(np.transpose(a,(1,2,0)), interpolation="nearest",vmin=0,vmax=1)
+            #     if a.shape[2]==3:
+            #         ax.imshow(a,vmin=0,vmax=1)
+            #     else:
+            #       ax.imshow(np.transpose(a,(1,2,0)),vmin=0,vmax=1)
+            #     ax.set_title(pic_all_t[id], fontsize=10)
+            #     # print(pic_all_t[id],type(a))
+            # #     print(pic_all_t[id],a.shape)
+            #     ax.set_xticks([])
+            #     ax.set_yticks([])
+            # ini = id+1
+                
+            
+            
+            match filter:
+                case 'wavelet':
+                    data_A_mask = hog_mask_rgb*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
+                    data_A_bar_mask = hog_mask_bar*data_A[0,:,:,:].cpu().detach().numpy()
+                    # ax = fig.add_subplot(len(pic_all)+2, 2, 2)
+                    # ax.hist(a.flatten(), linewidth=0.5, edgecolor="white")
+                    # ax.set_title(pic_all_t[id]+" hist", fontsize=10)
+
+
                     data_A_m1_LL,data_A_m1_HH =get_wavelet(data_A_mask)
                     data_A_m0_LL,data_A_m0_HH =get_wavelet(data_A_bar_mask)
+
 
                     m0_1_m1_LL = normalize(torch.tensor(data_A_bar_mask).unsqueeze(0)+data_A_m1_LL)
                     m0_1_m1_HH = normalize(torch.tensor(data_A_bar_mask).unsqueeze(0)+data_A_m1_HH)
@@ -329,7 +447,9 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                     m0_LL_m1_HH= normalize(data_A_m0_LL+ data_A_m1_HH)
                     m0_HH_m1_1 = normalize(data_A_m0_HH+torch.tensor(data_A_mask).unsqueeze(0))
                     m0_HH_m1_LL= normalize(data_A_m0_HH + data_A_m1_LL)
-                    m0_HH_m1_HH = data_A_m1_HH+data_A_m0_HH #data_A_HH
+                    m0_HH_m1_HH = data_A_m1_HH+data_A_m0_HH #data_A_H
+
+
 
                     pic_all=[data,
                              hog_mask_rgb,
@@ -345,9 +465,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                              m0_HH_m1_1 ,
                              m0_HH_m1_LL,
                              m0_HH_m1_HH]
-                    pic_all_t=[ 'data',
-                                'hog_mask_rgb',
-                                'data_A',
+                    pic_all_t=[ 'data_A',
                                 'm0_1_m1_LL ',
                                 'm0_1_m1_HH ',
                                 'Attack image with mask  ',
@@ -359,118 +477,88 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                                 'm0_HH_m1_1 ',
                                 'm0_HH_m1_LL',
                                 'm0_HH_m1_HH']
-                    if batch_idx==0:
-                        pic(pic_all,pic_all_t,5,3,title=A_name+'_defense_'+filter+'_hogData')
+                case 'jpeg':
+                    data_A_mask = hog_mask_rgb.unsqueeze(0)*data_A       #沒用到filter
+                    data_A_bar_mask = hog_mask_bar.unsqueeze(0)*data_A
+                    data_A_LL_m1=hog_mask_rgb*data_A_LL
+                    data_A_LL_m0=hog_mask_bar*data_A_LL
+                    data_A_HH_m1=hog_mask_rgb*data_A_HH
+                    data_A_HH_m0=hog_mask_bar*data_A_HH
+                    m0_1_LL_m1=normalize(data_A_bar_mask+data_A_LL_m1)
+                    m0_1_HH_m1=normalize(data_A_bar_mask+data_A_HH_m1)
 
-                                        
-            case 'jpeg':
-                data_A_jpeg =(decode_jpeg(encode_jpeg((data_A[0,:,:,:]*255).to(torch.uint8).cpu(),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
-                if batch_idx==0:
-                    logger.info("JPEG quality (30)")
-                    pic_all=[data_A,data_A_jpeg]
-                    pic_t=['data_A','data_A_jpeg']
-                    pic(pic_all,pic_t,1,3,title=A_name+'_defense_'+filter) 
-                    
-                    name_f_list.extend(['data_A_jpeg'])
-                for id,a in enumerate([data_A_jpeg]):
-                    output = model(a.to(device))
-                    _, pred = output.max(1)
-                    if batch_idx==0:
-                        correct_f_list.append(pred.eq(target).sum())
-                    else:
-                        correct_f_list[id+correct_f_ini]+=pred.eq(target).sum()
-                correct_f_ini=correct_f_ini+id+1
-                # pic(correct_f_list,name_f_list,3,3,title=A_name+'_defense_'+filter)
-                if hog==1:
-                    data_A_mask = torch.tensor(data_A_bar_mask) #tensor@cpu
-                    data_A_bar_mask = torch.tensor(data_A_bar_mask) #tensor@cpu
-                    data_A_m1_j=(decode_jpeg(encode_jpeg((data_A_mask*255).to(torch.uint8),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
-                    data_A_m0_j=(decode_jpeg(encode_jpeg((data_A_bar_mask*255).to(torch.uint8),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
-                    
-                    data_A_mask=data_A_mask.unsqueeze(0).to(device)
-                    data_A_bar_mask=data_A_bar_mask.unsqueeze(0).to(device)
-                    m0_1_m1_j = normalize(data_A_bar_mask+data_A_m1_j)
-                    m0_1_m1_0 = normalize(data_A_bar_mask)  
+                    m0_0_1_m1=data_A_mask
+                    m0_0_LL_m1=normalize(data_A_LL_m1)
+                    m0_0_HH_m1=normalize(data_A_HH_m1)
 
-                    m0_0_m1_1 = normalize(data_A_mask)   #m0_0_m1_1
-                    m0_0_m1_j = normalize(data_A_m1_j)   #m0_0_m1_1
+                    LL_m0_1_m1=normalize(data_A_LL_m0+data_A_mask)
+                    LL_m0_LL_m1=normalize(data_A_LL_m0+data_A_LL_m1)
+                    LL_m0_HH_m1=normalize(data_A_LL_m0+data_A_HH_m1)
 
-                    m0_j_m1_0 = normalize(data_A_m0_j)
-                    m0_j_m1_1 = normalize(data_A_m0_j+data_A_mask)
-                    m0_j_m1_j = normalize(data_A_m0_j+data_A_m1_j)
-                    pic_all=[data,
-                             hog_mask_rgb,
-                             data_A,
-                             m0_1_m1_j,
-                             m0_1_m1_0,
-                             m0_0_m1_1,
-                             m0_0_m1_j,
-                             m0_j_m1_0,
-                             m0_j_m1_1,
-                             m0_j_m1_j]
-                    pic_all_t=['data'         ,
-                               'hog_mask_rgb',
-                               'data_A',
-                               'm0_1_m1_j',
-                               'm0_1_m1_0',
-                               'm0_0_m1_1',
-                               'm0_0_m1_j',
-                               'm0_j_m1_0',
-                               'm0_j_m1_1',
-                               'm0_j_m1_j']
-                    if batch_idx==0:
-                        pic(pic_all,pic_all_t,5,2,title=A_name+'_defense_'+filter+'_hogData')
-                    
-                    
-
-            case _:
-                ##########grb testing############# not good defense
-                # data_A_grb=data_A[:, [1, 2, 0], :, :]
-                # # print(data_A_grb.size())
-                # data_A_grb_LL,data_A_grb_HH = get_wavelet(data_A_grb)
-                # data_A_grb_LL,data_A_grb_HH = normalize(data_A_grb_LL.to(device)),normalize(data_A_grb_HH.to(device))
-                # ########blur testing########## not good defense
-                # blurer= v2.GaussianBlur(kernel_size=9, sigma=( 5.))
-                # data_A_blur = blurer(data_A)
-                # data_A_blur_LL,data_A_blur_HH = get_wavelet(data_A_blur)
-                # data_A_blur_LL,data_A_blur_HH = normalize(data_A_blur_LL.to(device)),normalize(data_A_blur_HH.to(device))
-                #################################
-                print("")
-                ##########RGB adjustment############# not good defense, this formula has some issue
-                # data_A_meanRGB = torch.mean(data_A,dim=[2,3])
-                # data_A_mean=torch.mean(data_A_meanRGB,dim=1)
-                # data_A_meanRGB = data_A_meanRGB.unsqueeze(2).unsqueeze(2).expand(-1, -1,224,224)
-                # data_A_miti = data_A_mean/data_A_meanRGB*data_A
-        if hog==1:
-            ini=3
-            for id,a in enumerate(pic_all[ini:]):
-                a=a.to(device)
-                output = model(a)
+                    HH_m0_1_m1=normalize(data_A_HH_m0+data_A_mask)
+                    HH_m0_LL_m1=normalize(data_A_HH_m0+data_A_LL_m1)
+                    HH_m0_HH_m1=normalize(data_A_HH_m0+data_A_HH_m1)
+                case _:
+                    print("This is wrong filter type")
+                    return None
+            if  batch_idx==0:
+                pic(pic_all,pic_all_t,5,3,figname='hogData.jpg')
+            for id,a in enumerate(pic_all):
+                if pic_all_t[id]!='data_A' and pic_all_t[id]!='hog_mask_rgb':
+                    a=a.to(device)
+                    # print(pic_all_t[id])
+                    output = model(a)
                 _, pred = output.max(1)
                 if batch_idx==0:
-                    correct_hog_f_list.append(pred.eq(target).sum())
-                    name_hog_f_list.append(pic_all_t[id+ini])
-                else:    
-                    correct_hog_f_list[id]+=pred.eq(target).sum()
-            
-                    
-
-        # if batch_idx==2:
-        # # if batch_idx==round((len(data_loader)>>4)):
-        #     break
-        # break       
+                    if pic_all_t[id]!='data_A'and pic_all_t[id]!='hog_mask_rgb':
+                        correct_hog_f_list.append(pred.eq(target).sum())
+                        name_hog_f_list.append(pic_all_t[id])
+                # ax = fig.add_subplot(5, 3, (id) + 4)
+                # if torch.is_tensor(a):
+                #     if a.device == 'cpu':
+                #         a=a.detach().numpy()  
+                #     else:
+                #         a=a.cpu().detach().numpy()
+                #     a=a[0,:,:,:]              #3,114,114
+                
+                # ax.imshow(np.transpose(a,(1,2,0)),vmin=0,vmax=1)
+                # ax.set_title(pic_all_t[id], fontsize=10)
     
+                # ax.set_xticks([])
+                # ax.set_yticks([])
+                else:
+                    if pic_all_t[id]!='data_A'and pic_all_t[id]!='hog_mask_rgb':
+                        correct_hog_f_list[id+ini-1]+=pred.eq(target).sum()
+                    
+            # if batch_idx==0:
+            #     fig.tight_layout()
+            #     # plt.show()
+            #     save_path = os.path.join(pathToFigure, f'hogData.jpg')
+            #     plt.savefig(save_path)
+        if batch_idx==round((len(data_loader)>>4)):
+            break
+        break       
 
+                
 
     acc = 100.*correct/total
-  
-    strg=model_name+' Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
+    # acc_A = 100.*correct_A/total  
+    # print('The following hog part data_A is data_A_noise_LL')
+    strg=model_name+'Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
             batch_idx,len(data_loader),1.0*batch_idx/len(data_loader),eps_v, acc) 
       
     for id,correct_ele in enumerate(correct_f_list): 
             strg=strg+'acc_'+name_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
-    if hog==1:  
-    
+    if filter ==1 and hog==1:  
+        # if hog ==0:
+            # acc_A_LL = 100.*correct_A_LL/total
+            # acc_A_HH = 100.*correct_A_HH/total
+        
+            # strg=strg+'acc_A_LL =({:.2f}%), acc_A_HH =({:.2f}%)'.format(acc_A_LL,acc_A_HH)
+            
+        # else:
+            #  strg=strg+model_name+' Attack Finish, eps= = {} Acc=({:.2f}%),'.format(eps_v, acc)
+        # strg=strg+'The following hog part data_A is data_A_noise_LL.\n'
         for id,correct_ele in enumerate(correct_hog_f_list): 
             strg=strg+'acc_'+name_hog_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
             
@@ -479,22 +567,18 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
         
     return acc
 
-if __name__ == '__main__':   
+if __name__ == '__main__': 
     parser =  argparse.ArgumentParser()
     parser.add_argument('-gpu',type=str,default='0',help='which gpus to use')
     args=parser.parse_args()
-
+    os.enfiron['CUDA_VISIBLE_DEVICES'] = args.gpu
+    device = torch.device(f"cuda:{args.which_gpus}" if torch.cuda.is_available() else "cpu") 
     
-    device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu") 
-    if torch.cuda.is_available():
-        torch.cuda.set_device(int(args.gpu))
-    print('gpu:',torch.cuda.current_device())
-    # input()
     logger = get_logger('./logs', str(datetime.date.today())+'train.log')
     
     model_name='GTSRB_simpleCNN.pt'
     model = Net().to(device)
-    # input()
+    # model.load_state_dict(torch.load("mnist_model.pth", map_location="cpu"))
     model.eval()
     print(model)        
     criterion = nn.CrossEntropyLoss()
@@ -529,10 +613,11 @@ if __name__ == '__main__':
     )
 
     pathToFigure = 'Figure'
-
+    # pathToModel = 'Model'
     if not os.path.isdir(pathToFigure):
         os.mkdir(pathToFigure)
-
+    # if not os.path.isdir(pathToModel):
+        # os.mkdir(pathToModel)
     if not os.path.isfile(model_name):
         # start training
         max_epochs=100
@@ -579,10 +664,16 @@ if __name__ == '__main__':
         plt.title('Traning Accuracy', fontsize=15)
         plt.savefig(save_path)
     else:
-
+        # checkpoint = torch.load(model_name)
+        # model.load_state_dict(checkpoint['net'])                #load客製化的model
         model.load_state_dict(torch.load(model_name))          #一般正常load model方式
     
 
+    # loss_test,acc_test = test(test_loader)                      #calculate acc
+    
+
+    # plt.figure(figsize = (4,5))
+    
    
     
     
@@ -590,7 +681,6 @@ if __name__ == '__main__':
     # for eps in np.linspace(0.015, 0.1, num=5, endpoint=True):
     #     acc = attack(test_loader,'FGSM',eps_v=eps,filter=1)
     acc = attack(test_loader,'FGSM',eps_v=0.015,filter='wavelet',hog=1)
-    acc = attack(test_loader,'FGSM',eps_v=0.015,filter='jpeg',hog=1)
     # acc = attack(test_loader,'iFGSM',eps_v=0.015,filter=1,hog=1)
     """
     titles = ['Approximation', ' Horizontal detail',

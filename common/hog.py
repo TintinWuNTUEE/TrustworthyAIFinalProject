@@ -20,6 +20,6 @@ def mask_hog(img):
     else:
         img=np.transpose(img.detach().numpy(),(1,2,0))
     _,hog_mask = get_hog(img)
-    hog_mask_rgb = cv2.cvtColor(hog_mask, cv2.COLOR_GRAY2RGB)
-    # return img+hog_mask_rgb
-    return hog_mask,hog_mask_rgb,img+hog_mask_rgb
+    # hog_mask_rgb = cv2.cvtColor(hog_mask, cv2.COLOR_GRAY2RGB)
+    return hog_mask
+    # return hog_mask_rgb#,hog_mask,img+hog_mask_rgb
