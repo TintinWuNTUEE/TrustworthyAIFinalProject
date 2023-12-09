@@ -14,3 +14,6 @@ optimizer:
   lr: 0.001
   weight_decay: 0.0001
 scheduler:
+
+segment_anything:
+  checkpoint: ''./SAM/sam_vit_h_4b8939.pth''

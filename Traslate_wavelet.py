@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from logger import get_logger
-from utils.hog import mask_hog
+from common.hog import mask_hog
 import os
 import copy
 import pywt
@@ -93,7 +93,7 @@ def test(dataloader):
     # Save checkpoint.
    
     return test_loss/total, acc
-def get_wavelet(image):
+def get_wavelet(image):           #dataset.py
         if torch.is_tensor(image):
             if image.device == 'cpu':
                 LL, (LH, HL, HH) = pywt.dwt2(image.detach().numpy(),'haar')
@@ -129,7 +129,7 @@ def get_wavelet(image):
             HH = F.interpolate(torch.tensor(HH).unsqueeze(0),mode='area',size=[224,224])
         # return torch.tensor(LL),torch.tensor(HH)
         return LL,HH
-def FGSM (image, eps_v,data_grad):
+def FGSM (image, eps_v,data_grad):          #train.py
     n=eps_v*data_grad.sign()
     # print(SignGrad.type())
     # print(SignGrad.size())
@@ -139,7 +139,7 @@ def FGSM (image, eps_v,data_grad):
     attack_i = torch.clamp(attack_i,0,1) #limit the value between 0 and 1
     return attack_i,n  
 
-def iFGSM(image,label, eps_v,num_iter=20):
+def iFGSM(image,label, eps_v,num_iter=20):  #train.py
     # alpha and num_iter can be decided by yourself, I just quick set a value
     # alpha = eps_v/num_iter/100 
     alpha=1/255   
@@ -162,10 +162,10 @@ def iFGSM(image,label, eps_v,num_iter=20):
         attack_i = torch.max(torch.min(attack_i, image+eps_v), image-eps_v) # clip new x_adv back to [x-epsilon, x+epsilon]
     n=attack_i-image
     return attack_i,n
-def normalize(img):
+def normalize(img):              #utils.py
     img=(img-img.min())/(img.max()-img.min())
     return img
-def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):
+def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):   #utils.py
     fig=plt.figure()
     for id,a in enumerate(pic_l):  
         # print('subplot ',pic_l_t[id])
@@ -195,7 +195,7 @@ def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):
     save_path = os.path.join(pathToFigure, filename)
     plt.savefig(save_path)
         
-def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
+def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
 
     
     total = 0
