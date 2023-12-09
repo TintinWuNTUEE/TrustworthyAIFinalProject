@@ -464,7 +464,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
 
     acc = 100.*correct/total
   
-    strg=model_name+'Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
+    strg=model_name+' Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
             batch_idx,len(data_loader),1.0*batch_idx/len(data_loader),eps_v, acc) 
       
     for id,correct_ele in enumerate(correct_f_list): 

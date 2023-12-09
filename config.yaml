@@ -1,4 +1,5 @@
-models: ['resnet18','resnet50','vit-s','vit-t','hybrid-s']
+# models: ['resnet18','resnet50','vit-s','vit-t','hybrid-s']
+models: ['vit-s','vit-t','hybrid-s']
 train: 
   batch_size: 64
   num_workers: 8
@@ -16,4 +17,4 @@ optimizer:
 scheduler:
 
 segment_anything:
-  checkpoint: ''./SAM/sam_vit_h_4b8939.pth''
+  checkpoint: './SAM/sam_vit_h_4b8939.pth'

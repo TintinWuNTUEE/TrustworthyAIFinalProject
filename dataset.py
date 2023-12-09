@@ -74,36 +74,3 @@ def get_wavelet(image):
     # return torch.tensor(LL),torch.tensor(HH)
     return LL,HH
 
-def FGSM (image, eps_v,data_grad):
-    n=eps_v*data_grad.sign()
-    # print(SignGrad.type())
-    # print(SignGrad.size())
-    # print(image.type())
-    # print(image.size())
-    attack_i = image + n
-    attack_i = torch.clamp(attack_i,0,1) #limit the value between 0 and 1
-    return attack_i,n
-
-def iFGSM(image,label, eps_v,num_iter=20):
-    # alpha and num_iter can be decided by yourself, I just quick set a value
-    # alpha = eps_v/num_iter/100 
-    alpha=1/255   
-    attack_i = image
-    
-    for i in range(num_iter):
-        # print('i=',i)
-        # attack_i.requires_grad = True
-        attack_i= attack_i.detach().clone()
-        attack_i.requires_grad = True
-        loss =  criterion(model(attack_i.to(device)), label)
-        model.zero_grad() #zero all existing gradients
-        optimizer.zero_grad()
-        
-        loss.backward()
-        # print('after',attack_i.grad.data)
-        attack_i=attack_i+alpha*attack_i.grad.data.sign()
-        
-        # attack_i=torch.clamp(attack_i,image-eps_v,image+eps_v)
-        attack_i = torch.max(torch.min(attack_i, image+eps_v), image-eps_v) # clip new x_adv back to [x-epsilon, x+epsilon]
-    n=attack_i-image
-    return attack_i,n

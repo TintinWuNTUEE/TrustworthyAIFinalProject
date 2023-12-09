@@ -2,11 +2,12 @@ import yaml
 import torch
 import torch.nn as nn
 from models import get_model
-from dataset import get_dataset,get_wavelet,FGSM
+from dataset import get_dataset,get_wavelet
 from optimizer import get_optimizer
 from checkpoint import save_checkpoint,load_checkpoint
 from logger import get_logger
 from common.hog import mask_hog
+from common.utils import *
 
 import os
 
@@ -19,10 +20,8 @@ from thop import profile
 from torchvision.transforms import v2
 from torchvision.io import encode_jpeg,decode_jpeg
 import datetime
+import argparse
 
-# Checking for GPU availability
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
@@ -766,16 +765,16 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
             
                     
 
-        if batch_idx==2:
-        # # if batch_idx==round((len(data_loader)>>4)):
-            break
+        # if batch_idx==2:
+        # # # if batch_idx==round((len(data_loader)>>4)):
+        #     break
         # break       
     
 
 
     acc = 100.*correct/total
   
-    strg=model_name+'Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
+    strg=model_name+' Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
             batch_idx,len(data_loader),1.0*batch_idx/len(data_loader),eps_v, acc) 
       
     for id,correct_ele in enumerate(correct_f_list): 
@@ -791,7 +790,14 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
     return acc
 
 if __name__ == "__main__":
-    
+    gpuparser =  argparse.ArgumentParser()
+    gpuparser.add_argument('-gpu',type=str,default='0',help='which gpus to use')
+    gpuargs=gpuparser.parse_args()
+    # Checking for GPU availability
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        torch.cuda.set_device(int(gpuargs.gpu))
+    print('gpu:',torch.cuda.current_device())
     args = parse_args()
     logger = get_logger(args['train']['log_path'], str(datetime.date.today())+ args['train']['log_file'])
     criterion = nn.CrossEntropyLoss()
@@ -835,5 +841,5 @@ if __name__ == "__main__":
         #     acc = attack(test_dataloader,'FGSM',filter=1,hog=1,eps_v=eps)
         acc = attack(test_dataloader,'FGSM',eps_v=0.015,filter='wavelet',hog=1)
         acc = attack(test_dataloader,'FGSM',eps_v=0.015,filter='jpeg',hog=1)
-        break
+        # break
     
