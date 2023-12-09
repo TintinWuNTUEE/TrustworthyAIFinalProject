@@ -168,6 +168,7 @@ def normalize(img):
 def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):
     fig=plt.figure()
     for id,a in enumerate(pic_l):  
+        # print('subplot ',pic_l_t[id])
         ax = fig.add_subplot(row, col, id+1)
         if torch.is_tensor(a):
             if a.device == 'cpu':
@@ -199,11 +200,6 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
     
     total = 0
     correct = 0
-    correct_A =0
-    correct_A_LL = 0
-    correct_A_HH = 0
-    acc_A_LL = 200
-    acc_A_HH = 200
     logger.info('Attack start'+model_name+ ' '+A_name)
 
     name_hog_f_list=[]
@@ -283,7 +279,16 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
         correct_f_ini=correct_f_ini+id+1
 
 
-        
+        if hog==1:
+            hog_mask= mask_hog(data_A[0,:,:,:]) 
+            hog_mask_rgb = normalize(np.array([hog_mask]*3) )  #3,224,224
+            hog_mask_bar= 1-hog_mask 
+            #m1_1
+            data_A_mask = hog_mask_rgb*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
+            #m0_1
+            data_A_bar_mask = hog_mask_bar*data_A[0,:,:,:].cpu().detach().numpy()
+
+
         match filter:
             
             case  'wavelet':
@@ -308,14 +313,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
 
                 if hog==1:
                     ini = 0
-                    hog_mask= mask_hog(data_A[0,:,:,:])
-                    hog_mask_rgb = normalize(np.array([hog_mask]*3) )  #3,224,224
- 
-
-                    hog_mask_bar= 1-hog_mask 
-                    data_A_mask = hog_mask_rgb*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
-                    data_A_bar_mask = hog_mask_bar*data_A[0,:,:,:].cpu().detach().numpy()
-
+                    
                     data_A_m1_LL,data_A_m1_HH =get_wavelet(data_A_mask)
                     data_A_m0_LL,data_A_m0_HH =get_wavelet(data_A_bar_mask)
 
@@ -361,21 +359,10 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
                                 'm0_HH_m1_1 ',
                                 'm0_HH_m1_LL',
                                 'm0_HH_m1_HH']
-
-                    ini=3
-                    for id,a in enumerate(pic_all[ini:]):
-                        a=a.to(device)
-                        output = model(a)
-                        _, pred = output.max(1)
-                        if batch_idx==0:
-                            correct_hog_f_list.append(pred.eq(target).sum())
-                            name_hog_f_list.append(pic_all_t[id+ini])
-                        else:    
-                            correct_hog_f_list[id]+=pred.eq(target).sum()
-
                     if batch_idx==0:
-                        pic(pic_all,pic_all_t,5,3,title=A_name+'_hogData',filename=A_name+'_hogData.jpg')
-                    
+                        pic(pic_all,pic_all_t,5,3,title=A_name+'_defense_'+filter+'_hogData')
+
+                                        
             case 'jpeg':
                 data_A_jpeg =(decode_jpeg(encode_jpeg((data_A[0,:,:,:]*255).to(torch.uint8).cpu(),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
                 if batch_idx==0:
@@ -393,9 +380,49 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
                     else:
                         correct_f_list[id+correct_f_ini]+=pred.eq(target).sum()
                 correct_f_ini=correct_f_ini+id+1
-                pic(correct_f_list,name_f_list,3,3,title=A_name+'_defense_'+filter)
+                # pic(correct_f_list,name_f_list,3,3,title=A_name+'_defense_'+filter)
                 if hog==1:
-                    print("")
+                    data_A_mask = torch.tensor(data_A_bar_mask) #tensor@cpu
+                    data_A_bar_mask = torch.tensor(data_A_bar_mask) #tensor@cpu
+                    data_A_m1_j=(decode_jpeg(encode_jpeg((data_A_mask*255).to(torch.uint8),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
+                    data_A_m0_j=(decode_jpeg(encode_jpeg((data_A_bar_mask*255).to(torch.uint8),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
+                    
+                    data_A_mask=data_A_mask.unsqueeze(0).to(device)
+                    data_A_bar_mask=data_A_bar_mask.unsqueeze(0).to(device)
+                    m0_1_m1_j = normalize(data_A_bar_mask+data_A_m1_j)
+                    m0_1_m1_0 = normalize(data_A_bar_mask)  
+
+                    m0_0_m1_1 = normalize(data_A_mask)   #m0_0_m1_1
+                    m0_0_m1_j = normalize(data_A_m1_j)   #m0_0_m1_1
+
+                    m0_j_m1_0 = normalize(data_A_m0_j)
+                    m0_j_m1_1 = normalize(data_A_m0_j+data_A_mask)
+                    m0_j_m1_j = normalize(data_A_m0_j+data_A_m1_j)
+                    pic_all=[data,
+                             hog_mask_rgb,
+                             data_A,
+                             m0_1_m1_j,
+                             m0_1_m1_0,
+                             m0_0_m1_1,
+                             m0_0_m1_j,
+                             m0_j_m1_0,
+                             m0_j_m1_1,
+                             m0_j_m1_j]
+                    pic_all_t=['data'         ,
+                               'hog_mask_rgb',
+                               'data_A',
+                               'm0_1_m1_j',
+                               'm0_1_m1_0',
+                               'm0_0_m1_1',
+                               'm0_0_m1_j',
+                               'm0_j_m1_0',
+                               'm0_j_m1_1',
+                               'm0_j_m1_j']
+                    if batch_idx==0:
+                        pic(pic_all,pic_all_t,5,2,title=A_name+'_defense_'+filter+'_hogData')
+                    
+                    
+
             case _:
                 ##########grb testing############# not good defense
                 # data_A_grb=data_A[:, [1, 2, 0], :, :]
@@ -414,13 +441,23 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0):
                 # data_A_mean=torch.mean(data_A_meanRGB,dim=1)
                 # data_A_meanRGB = data_A_meanRGB.unsqueeze(2).unsqueeze(2).expand(-1, -1,224,224)
                 # data_A_miti = data_A_mean/data_A_meanRGB*data_A
-        
-
+        if hog==1:
+            ini=3
+            for id,a in enumerate(pic_all[ini:]):
+                a=a.to(device)
+                output = model(a)
+                _, pred = output.max(1)
+                if batch_idx==0:
+                    correct_hog_f_list.append(pred.eq(target).sum())
+                    name_hog_f_list.append(pic_all_t[id+ini])
+                else:    
+                    correct_hog_f_list[id]+=pred.eq(target).sum()
+            
                     
 
-        # if batch_idx==1:
-        if batch_idx==round((len(data_loader)>>4)):
-            break
+        # if batch_idx==2:
+        # # if batch_idx==round((len(data_loader)>>4)):
+        #     break
         # break       
     
 
@@ -446,13 +483,18 @@ if __name__ == '__main__':
     parser =  argparse.ArgumentParser()
     parser.add_argument('-gpu',type=str,default='0',help='which gpus to use')
     args=parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-    device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu") 
+
     
+    device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu") 
+    if torch.cuda.is_available():
+        torch.cuda.set_device(int(args.gpu))
+    print('gpu:',torch.cuda.current_device())
+    # input()
     logger = get_logger('./logs', str(datetime.date.today())+'train.log')
     
     model_name='GTSRB_simpleCNN.pt'
     model = Net().to(device)
+    # input()
     model.eval()
     print(model)        
     criterion = nn.CrossEntropyLoss()
@@ -548,6 +590,7 @@ if __name__ == '__main__':
     # for eps in np.linspace(0.015, 0.1, num=5, endpoint=True):
     #     acc = attack(test_loader,'FGSM',eps_v=eps,filter=1)
     acc = attack(test_loader,'FGSM',eps_v=0.015,filter='wavelet',hog=1)
+    acc = attack(test_loader,'FGSM',eps_v=0.015,filter='jpeg',hog=1)
     # acc = attack(test_loader,'iFGSM',eps_v=0.015,filter=1,hog=1)
     """
     titles = ['Approximation', ' Horizontal detail',
