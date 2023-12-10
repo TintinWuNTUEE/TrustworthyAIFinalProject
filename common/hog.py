@@ -2,8 +2,12 @@ import cv2
 import numpy as np
 from skimage.feature import hog
 import torch
-
+import sys 
 from .utils import pil2cv2_grayscale
+# from dataset import get_dataset
+
+import time
+
 def get_hog(img):
     img_gray = pil2cv2_grayscale(img)
     normalised_blocks, hog_image = hog(img_gray,
@@ -22,4 +26,13 @@ def mask_hog(img):
     _,hog_mask = get_hog(img)
     # hog_mask_rgb = cv2.cvtColor(hog_mask, cv2.COLOR_GRAY2RGB)
     return hog_mask
-    # return hog_mask_rgb#,hog_mask,img+hog_mask_rgb
+
+if __name__ == "__main__":
+    train_loader,_ = get_dataset(1,0)
+    images, labels = next(iter(train_loader))
+    # image = images[0].permute(1,2,0).numpy()
+    
+    print(time.ctime(time.time())) 
+    image = mask_hog(images[0])
+    print(time.ctime(time.time())) 
+    cv2.imwrite('hog_mask.jpg',image)

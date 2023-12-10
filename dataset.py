@@ -25,7 +25,7 @@ def get_dataset(batch_size, num_workers,transform=transform):
         datasets.GTSRB(
             "./data",
             split="test",
-            download=True,
+            download=False,
             transform=transform
         ),
         batch_size=1,
