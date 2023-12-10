@@ -217,7 +217,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',mask=0): #train.py
     mask_l=['hog','rembg']
     total = 0
     correct = 0
-    information='Attack start '+model_name+ ' '+A_name+ ' e '+str(eps_v)
+    information='Attack start '+model_name+ ' '+A_name+ ' e '+str(eps_v)+' defense '+filter
     if mask>0:
         information=information+' with '+mask_l[mask-1]
     logger.info(information)
