@@ -8,8 +8,10 @@ from torchvision import datasets, transforms
 import numpy as np
 import matplotlib.pyplot as plt
 
-from logger import get_logger
 from common.hog import mask_hog
+from logger import get_logger
+
+from common.utils import enhanceS,get_targetArea
 import os
 import copy
 import pywt
@@ -18,6 +20,8 @@ from torchvision.io import encode_jpeg,decode_jpeg
 import datetime
 #from utils import progress_bar
 import argparse
+# from segmentation import *
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -163,7 +167,20 @@ def iFGSM(image,label, eps_v,num_iter=20):  #train.py
     n=attack_i-image
     return attack_i,n
 def normalize(img):              #utils.py
-    img=(img-img.min())/(img.max()-img.min())
+    denom=(img.max()-img.min())
+    if denom>0:
+        img=(img-img.min())/denom
+    return img
+def rgb2HSL(img,s):
+    # print(img.size())
+    if torch.cuda.is_available():
+        img=np.transpose(img.cpu().detach().numpy(),(1,2,0))
+    else:
+        img=np.transpose(img.detach().numpy(),(1,2,0))
+    _,HLS = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+    HLS[:,:,2]=HLS[:,:,2]+0.02
+    img=cv2.cvtColor(HLS, cv2.COLOR_HLS2RGB)
+    # hog_mask_rgb = cv2.cvtColor(hog_mask, cv2.COLOR_GRAY2RGB)
     return img
 def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):   #utils.py
     fig=plt.figure()
@@ -195,12 +212,15 @@ def pic(pic_l,pic_l_t,row,col,title,filename=None,cmap=0):   #utils.py
     save_path = os.path.join(pathToFigure, filename)
     plt.savefig(save_path)
         
-def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
-
-    
+def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',mask=0): #train.py
+#mask:0,none;1,hog;2,rembg
+    mask_l=['hog','rembg']
     total = 0
     correct = 0
-    logger.info('Attack start'+model_name+ ' '+A_name)
+    information='Attack start '+model_name+ ' '+A_name+ ' e '+str(eps_v)
+    if mask>0:
+        information=information+' with '+mask_l[mask-1]
+    logger.info(information)
 
     name_hog_f_list=[]
     correct_hog_f_list =[]
@@ -238,30 +258,32 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
         data_A_noise_LL =normalize( data + noise_LL.to(device))
         data_A_noise_HH =normalize( data + noise_HH.to(device))
 
-        if batch_idx==0:
-            fig=plt.figure()
-            noise_norm=normalize(noise)
-            pic_t=['data_r','data_g','data_b','noise_r','noir_g','noise_b']
-            for id in range(3):
-                ax = fig.add_subplot(2,3, id+ 1)
-                ax.imshow(data[0,id,:,:].cpu().detach().numpy(), interpolation="nearest",vmin=0,vmax=1,cmap='gray')
-                ax.set_title(pic_t[id], fontsize=10)
-                ax.set_xticks([])
-                ax.set_yticks([])
-                ax = fig.add_subplot(2,3, id+ 4)
-                ax.imshow(noise_norm[0,id,:,:].cpu().detach().numpy(), interpolation="nearest",vmin=0,vmax=1,cmap='gray')
-                ax.set_title(pic_t[id+3], fontsize=10)
-                ax.set_xticks([])
-                ax.set_yticks([])
-                fig.tight_layout()
-            save_path = os.path.join(pathToFigure, f'{A_name}_data_noise_rgb.jpg')
-            plt.savefig(save_path)
-       
-        
+        if batch_idx==0 :
+            # print('attack rgb analysis plot start')
+            if eps_v>0:
+                fig=plt.figure()
+                noise_norm=normalize(noise)
+                pic_t=['data_r','data_g','data_b','noise_r','noir_g','noise_b']
+                for id in range(3):
+                    ax = fig.add_subplot(2,3, id+ 1)
+                    ax.imshow(data[0,id,:,:].cpu().detach().numpy(), interpolation="nearest",vmin=0,vmax=1,cmap='gray')
+                    ax.set_title(pic_t[id], fontsize=10)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax = fig.add_subplot(2,3, id+ 4)
+                    ax.imshow(noise_norm[0,id,:,:].cpu().detach().numpy(), interpolation="nearest",vmin=0,vmax=1,cmap='gray')
+                    ax.set_title(pic_t[id+3], fontsize=10)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    plt.suptitle(f'{model_name}_{A_name}_noise_{eps_v}_rgb')
+                    fig.tight_layout()
+                save_path = os.path.join(pathToFigure, f'{model_name}_{A_name}_noise_{eps_v}_rgb.jpg')
+                plt.savefig(save_path)
             pic_all=[data_A,data_A_noise_LL,data_A_noise_HH,data,normalize(noise),normalize(noise_LL),normalize(noise_HH)]
             pic_t=['data_A','data_A_noise_LL','data_A_noise_HH','data','noise','noise_LL','noise_HH']
-            pic(pic_all,pic_t,2,4,title=A_name+'_noise_'+filter) 
-            
+            if eps_v>0:
+                pic(pic_all,pic_t,2,4,title=model_name+'_'+A_name+'_noise_'+str(eps_v)) 
+            # print('attack rgb analysis plot finish')
             name_f_list=pic_t[:3]
         
         correct_f_ini=0   
@@ -279,7 +301,8 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
         correct_f_ini=correct_f_ini+id+1
 
 
-        if hog==1:
+        # if mask==1: #hog
+        if mask==1: #hog
             hog_mask= mask_hog(data_A[0,:,:,:]) 
             hog_mask_rgb = normalize(np.array([hog_mask]*3) )  #3,224,224
             hog_mask_bar= 1-hog_mask 
@@ -287,8 +310,18 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
             data_A_mask = hog_mask_rgb*data_A[0,:,:,:].cpu().detach().numpy()        #沒用到filter
             #m0_1
             data_A_bar_mask = hog_mask_bar*data_A[0,:,:,:].cpu().detach().numpy()
-
-
+            # print('data_A_bar_mask type:',torch.tensor(data_A_bar_mask))
+            # print('hog_mask type: ',hog_mask.dtype)
+        elif mask==2:#rembg
+            
+            data_A_mask = get_targetArea(data_A[0,:,:,:]) #3,224,224
+            if torch.cuda.is_available():
+                data_A_bar_mask = data_A[0,:,:,:].cpu().detach().numpy()-data_A_mask
+            else:
+                data_A_bar_mask = data_A[0,:,:,:].numpy()-data_A_mask
+            
+            hog_mask_rgb = data_A_mask.copy()
+            hog_mask_rgb[data_A_mask>0]=1 
         match filter:
             
             case  'wavelet':
@@ -296,12 +329,14 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                 data_A_LL,data_A_HH = get_wavelet(data_A)
                 data_A_LL,data_A_HH=normalize(data_A_LL.to(device)),normalize(data_A_HH.to(device))    #沒用到mask
                 if batch_idx==0:
-                    pic_all=[data_A,data_A_LL,data_A_HH]
-                    pic_t=['data_A','data_A_LL','data_A_HH']
-                    pic(pic_all,pic_t,1,3,title=A_name+'_defense_'+filter) 
+                    if eps_v>0:
+                        pic_all=[data_A,data_A_LL,data_A_HH]
+                        pic_t=['data_A','data_A_LL','data_A_HH']
+                    
+                        pic(pic_all,pic_t,1,3,title=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter) 
                     name_f_list.extend(['data_A_LL','data_A_HH'])
                     
-                    print('correct_f_ini=',correct_f_ini)
+                    # print('correct_f_ini=',correct_f_ini)
                 for id,a in enumerate([data_A_LL,data_A_HH]):
                     output = model(a.to(device))
                     _, pred = output.max(1)
@@ -311,7 +346,8 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                         correct_f_list[id+correct_f_ini]+=pred.eq(target).sum() #前面ini=3個
                 correct_f_ini=correct_f_ini+id+1
 
-                if hog==1:
+                # if mask==1:
+                if mask>0:
                     ini = 0
                     
                     data_A_m1_LL,data_A_m1_HH =get_wavelet(data_A_mask)
@@ -325,7 +361,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                     m0_0_m1_HH = normalize(data_A_m1_HH)  #m0_0_m1_HH
 
                     m0_LL_m1_1 = normalize(data_A_m0_LL+torch.tensor(data_A_mask).unsqueeze(0))
-                    m0_LL_m1_LL = data_A_m1_LL+m0_0_m1_LL#data_A_LL
+                    m0_LL_m1_LL = normalize(data_A_m0_LL+data_A_m1_LL)#data_A_LL
                     m0_LL_m1_HH= normalize(data_A_m0_LL+ data_A_m1_HH)
                     m0_HH_m1_1 = normalize(data_A_m0_HH+torch.tensor(data_A_mask).unsqueeze(0))
                     m0_HH_m1_LL= normalize(data_A_m0_HH + data_A_m1_LL)
@@ -333,6 +369,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
 
                     pic_all=[data,
                              hog_mask_rgb,
+                             data_A_mask,
                              data_A,
                              m0_1_m1_LL ,
                              m0_1_m1_HH ,
@@ -346,7 +383,8 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                              m0_HH_m1_LL,
                              m0_HH_m1_HH]
                     pic_all_t=[ 'data',
-                                'hog_mask_rgb',
+                                'mask_rgb',
+                                'data_A_mask',
                                 'data_A',
                                 'm0_1_m1_LL ',
                                 'm0_1_m1_HH ',
@@ -359,17 +397,18 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                                 'm0_HH_m1_1 ',
                                 'm0_HH_m1_LL',
                                 'm0_HH_m1_HH']
-                    if batch_idx==0:
-                        pic(pic_all,pic_all_t,5,3,title=A_name+'_defense_'+filter+'_hogData')
+                    if batch_idx==0 and eps_v>0:
+                        pic(pic_all,pic_all_t,5,3,title=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter+'_'+mask_l[mask-1])
 
                                         
             case 'jpeg':
                 data_A_jpeg =(decode_jpeg(encode_jpeg((data_A[0,:,:,:]*255).to(torch.uint8).cpu(),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
                 if batch_idx==0:
                     logger.info("JPEG quality (30)")
-                    pic_all=[data_A,data_A_jpeg]
-                    pic_t=['data_A','data_A_jpeg']
-                    pic(pic_all,pic_t,1,3,title=A_name+'_defense_'+filter) 
+                    if eps_v>0:
+                        pic_all=[data_A,data_A_jpeg]
+                        pic_t=['data_A','data_A_jpeg']
+                        pic(pic_all,pic_t,1,3,title=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter) 
                     
                     name_f_list.extend(['data_A_jpeg'])
                 for id,a in enumerate([data_A_jpeg]):
@@ -381,12 +420,12 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                         correct_f_list[id+correct_f_ini]+=pred.eq(target).sum()
                 correct_f_ini=correct_f_ini+id+1
                 # pic(correct_f_list,name_f_list,3,3,title=A_name+'_defense_'+filter)
-                if hog==1:
-                    data_A_mask = torch.tensor(data_A_bar_mask) #tensor@cpu
+                if mask>0:
+                    data_A_mask = torch.tensor(data_A_mask) #tensor@cpu
                     data_A_bar_mask = torch.tensor(data_A_bar_mask) #tensor@cpu
                     data_A_m1_j=(decode_jpeg(encode_jpeg((data_A_mask*255).to(torch.uint8),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
                     data_A_m0_j=(decode_jpeg(encode_jpeg((data_A_bar_mask*255).to(torch.uint8),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
-                    
+                  
                     data_A_mask=data_A_mask.unsqueeze(0).to(device)
                     data_A_bar_mask=data_A_bar_mask.unsqueeze(0).to(device)
                     m0_1_m1_j = normalize(data_A_bar_mask+data_A_m1_j)
@@ -400,6 +439,7 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                     m0_j_m1_j = normalize(data_A_m0_j+data_A_m1_j)
                     pic_all=[data,
                              hog_mask_rgb,
+                             data_A_mask,
                              data_A,
                              m0_1_m1_j,
                              m0_1_m1_0,
@@ -409,7 +449,8 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                              m0_j_m1_1,
                              m0_j_m1_j]
                     pic_all_t=['data'         ,
-                               'hog_mask_rgb',
+                               'mask_rgb',
+                               'data_A_mask',
                                'data_A',
                                'm0_1_m1_j',
                                'm0_1_m1_0',
@@ -418,11 +459,55 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                                'm0_j_m1_0',
                                'm0_j_m1_1',
                                'm0_j_m1_j']
+                    if batch_idx==0 and eps_v>0:
+                        pic(pic_all,pic_all_t,4,3,title=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter+'_'+mask_l[mask-1])
+                    
+                    
+            case 'enhaceS':
+                data_A_enhS = enhanceS(data_A[0,:,:,:],s=2*2.15)  #8./100.    #s is [0,1], expect output is on the range [0,1]
+                data_A_enhS_norm=normalize(data_A_enhS)
+                data_A_enhS_1 = enhanceS(data_A[0,:,:,:],s=255)      #s is [0,1], expect output is on the range [0,1]
+                data_A_enhS_1_norm=normalize(data_A_enhS_1)
+                # print('data_A_enhS max=',data_A_enhS.max(),' data_A_enhS min=',data_A_enhS.min())
+                if batch_idx==0:
+                    # print("EhanceS plot start")
+                    if eps_v>0:
+                        pic_all=[data_A,data_A_enhS_norm,data_A_enhS_1_norm]
+                        pic_t=['data_A','data_A_enhS_norm','data_A_enhS_1_norm']
+                        pic(pic_all,pic_t,1,3,title=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter) 
+                    # print("EhanceS plot stop")
+                    name_f_list.extend(['data_A_enhS_norm','data_A_enhS_1_norm'])
+                for id,a in enumerate([data_A_enhS_norm,data_A_enhS_1_norm]):
+                    output = model(a.to(device))
+                    _, pred = output.max(1)
                     if batch_idx==0:
-                        pic(pic_all,pic_all_t,5,2,title=A_name+'_defense_'+filter+'_hogData')
+                        correct_f_list.append(pred.eq(target).sum())
+                    else:
+                        correct_f_list[id+correct_f_ini]+=pred.eq(target).sum()
+                correct_f_ini=correct_f_ini+id+1                
+               
+                
+            case 'combine': #enhance+jpeg+LL  fail no use
+                data_A_enhS_1 = enhanceS(data_A[0,:,:,:],s=255)      #s is [0,255]#s is [0,1], expect output is on the range [0,1]
+                data_A_enhS_1_norm=normalize(data_A_enhS_1)
+                data_A_enhS_jpeg = (decode_jpeg(encode_jpeg((data_A_enhS_1_norm[0,:,:,:]*255).to(torch.uint8).cpu(),quality=30),device=device)/255.).to(torch.float).unsqueeze(0)
+                data_A_enhS_jpeg_LL,_ = get_wavelet(data_A_enhS_jpeg)
+                if batch_idx==0:
+                    pic_all=[data_A,data_A_enhS_1_norm,data_A_enhS_jpeg,data_A_enhS_jpeg_LL]
+                    pic_t=['data_A','data_A_enhS_1_norm','data_A_enhS_jpeg','data_A_enhS_jpeg_LL']
+                    if eps_v>0:
+                        pic(pic_all,pic_t,1,4,title=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter) 
+                    name_f_list.extend(pic_t[1:])
                     
-                    
-
+                    # print('correct_f_ini=',correct_f_ini)
+                for id,a in enumerate(pic_all[1:]):#[data_A_enhS_1_norm,data_A_enhS_jpeg]):
+                    output = model(a.to(device))
+                    _, pred = output.max(1)
+                    if batch_idx==0:
+                        correct_f_list.append(pred.eq(target).sum()) 
+                    else:
+                        correct_f_list[id+correct_f_ini]+=pred.eq(target).sum() #前面ini=3個
+                correct_f_ini=correct_f_ini+id+1
             case _:
                 ##########grb testing############# not good defense
                 # data_A_grb=data_A[:, [1, 2, 0], :, :]
@@ -441,12 +526,14 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                 # data_A_mean=torch.mean(data_A_meanRGB,dim=1)
                 # data_A_meanRGB = data_A_meanRGB.unsqueeze(2).unsqueeze(2).expand(-1, -1,224,224)
                 # data_A_miti = data_A_mean/data_A_meanRGB*data_A
-        if hog==1:
-            ini=3
+        if mask>0:
+            ini=4
             for id,a in enumerate(pic_all[ini:]):
+                # print('id =',id)
                 a=a.to(device)
                 output = model(a)
                 _, pred = output.max(1)
+                
                 if batch_idx==0:
                     correct_hog_f_list.append(pred.eq(target).sum())
                     name_hog_f_list.append(pic_all_t[id+ini])
@@ -456,39 +543,59 @@ def attack(data_loader,A_name,eps_v=0.015,filter='wavelet',hog=0): #train.py
                     
 
         # if batch_idx==2:
-        # # if batch_idx==round((len(data_loader)>>4)):
-        #     break
-        # break       
+        if batch_idx==round((len(data_loader)>>4)):
+            break
+        break       
     
-
-
-    acc = 100.*correct/total
-  
+    acc = (100.*correct/total)
+    
     strg=model_name+' Attack Finish data volume=({}/{})({:.2f}), eps= {} Acc=({:.2f}%) \n'.format(
             batch_idx,len(data_loader),1.0*batch_idx/len(data_loader),eps_v, acc) 
       
     for id,correct_ele in enumerate(correct_f_list): 
             strg=strg+'acc_'+name_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
-    if hog==1:  
-    
+    if mask>0:  
+        savez_dict = dict()
         for id,correct_ele in enumerate(correct_hog_f_list): 
-            strg=strg+'acc_'+name_hog_f_list[id]+' = ({:.2f}%)\n'.format(100.*correct_ele/total)
+            strg=strg+'acc_'+name_hog_f_list[id]+' = ({:.2f}%) with '.format(100.*correct_ele/total)+mask_l[mask-1]+'\n'
+        # for i in ['acc','correct_f_list','name_f_list','correct_hog_f_list','name_hog_f_list']:
+        if torch.cuda.is_available():
+            acc = acc.cpu().detach()
+            correct_f_list = torch.stack(correct_f_list).cpu().detach()
+            correct_hog_f_list = torch.stack(correct_hog_f_list).cpu().detach()
+        acc = acc.numpy()
+        correct_f_list=correct_f_list.numpy()
+        correct_hog_f_list=correct_hog_f_list.numpy()
+        savez_dict[ 'acc' ] = acc
+        savez_dict[ 'correct_f_list' ] = correct_f_list
+        savez_dict[ 'name_f_list' ] = name_f_list
+        savez_dict[ 'correct_hog_f_list' ] = correct_hog_f_list
+        savez_dict[ 'name_hog_f_list' ] = name_hog_f_list
             
+        filename=model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter+'_'+mask_l[mask-1]+'.npz'
+        np.savez(model_name+'_'+A_name+'_noise_'+str(eps_v)+'_defense_'+filter+'_'+mask_l[mask-1]+'.npz', **savez_dict)
     logger.info(strg)
     
-        
-    return acc
+    # np.savez_compressed('example_savez_compressed.npz', my_arr4=arr4, my_arr5=arr5, my_arr6=arr6)
+    
+    
+    # return acc,correct_f_list,name_f_list,correct_hog_f_list,name_hog_f_list
+    # return filename
 
 if __name__ == '__main__':   
     parser =  argparse.ArgumentParser()
     parser.add_argument('-gpu',type=str,default='0',help='which gpus to use')
     args=parser.parse_args()
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu   #只看到第x張，或某幾張，這個時候這些會重新被index 0,1
     
-    device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu") 
-    if torch.cuda.is_available():
-        torch.cuda.set_device(int(args.gpu))
+    # device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else "cpu") 
+    device = torch.device(f'cuda' if torch.cuda.is_available() else "cpu") 
     print('gpu:',torch.cuda.current_device())
+    # if torch.cuda.is_available():
+    #     torch.cuda.set_device(int(args.gpu))
+    
+    # print('gpu:',torch.cuda.current_device())
     # input()
     logger = get_logger('./logs', str(datetime.date.today())+'train.log')
     
@@ -584,13 +691,20 @@ if __name__ == '__main__':
     
 
    
-    
+    # mask_generator = create_segmentor()
     
     # 
     # for eps in np.linspace(0.015, 0.1, num=5, endpoint=True):
     #     acc = attack(test_loader,'FGSM',eps_v=eps,filter=1)
-    acc = attack(test_loader,'FGSM',eps_v=0.015,filter='wavelet',hog=1)
-    acc = attack(test_loader,'FGSM',eps_v=0.015,filter='jpeg',hog=1)
+    # acc = attack(test_loader,'FGSM',eps_v=0,filter='combine',hog=0)
+    # acc = attack(test_loader,'FGSM',eps_v=0.015,filter='combine',hog=0)
+    # acc = attack(test_loader,'FGSM',eps_v=0,filter='wavelet',hog=0)
+    # for id in range(2):
+    #     acc = attack(test_loader,'FGSM',eps_v=0.015,filter='wavelet',mask=id+1)
+    #     acc = attack(test_loader,'FGSM',eps_v=0.015,filter='jpeg',mask=id+1)
+    attack(test_loader,'FGSM',eps_v=0.015,filter='jpeg',mask=1+1)
+    # test=np.load(file)
+    # print('test type:',type(test),'\n',test,'\n',test['correct_f_list'])
     # acc = attack(test_loader,'iFGSM',eps_v=0.015,filter=1,hog=1)
     """
     titles = ['Approximation', ' Horizontal detail',
