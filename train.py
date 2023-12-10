@@ -35,9 +35,9 @@ def print_model(model):
     summary(model, (3, 224, 224))
     input = torch.randn(1, 3, 224, 224).to(device)
     flops, params = profile(model, inputs=(input, ))
-    print(model)
-    print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
-    print(f"FLOPs: {flops}, Params: {params}")
+    # print(model)
+    # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    # print(f"FLOPs: {flops}, Params: {params}")
 
 # Function to parse arguments from a YAML file
 def parse_args(file_path='./config.yaml'):
@@ -555,41 +555,34 @@ if __name__ == "__main__":
     
     filterlist=['wavelet','jpeg']
     attacklist=['FGSM','iFGSM']
-    
-    for model_name in args['models']:
-        model = get_model(model_name).to(device)
-        optimizer,schedueler = get_optimizer(args['optimizer']['name'],
-                                         model,
-                                         args['optimizer']['lr'],
-                                         args['optimizer']['weight_decay'])
-        # model_path = args['train']['checkpoint_path']+'/'+model_name+'.pth'
-        # # if no model exist, do training
-        # if not os.path.isfile(model_path):
-        #     input()
-        #     train_single_model(args,model_name,train_dataloader,test_dataloader,logger)
-        # else:
-        # print_model(model)
-        model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger,device)
-        
-        #print("start_epoch",start_epoch)
-        model.eval() 
-        gradients = None
-        
-        
-        
-        
-        pathToFigure = 'Figure'
-        # pathToModel = 'Model'
-        if not os.path.isdir(pathToFigure):
-            os.mkdir(pathToFigure)
-    
-       
-        # for eps in np.linspace(0.015, 0.03, num=5, endpoint=True):
-            for at in attacklist:
-                # for fil in filterlist:
-                    # for m in range(2):
-                        # attack(test_dataloader,at,eps_v=eps,filter=fil,mask=2)
-                        attack(test_dataloader,at,eps_v=0.015,filter='jpeg',mask=2)
+    for eps in np.linspace(0.015, 0.03, num=5, endpoint=True):
+        for model_name in args['models']:
+            model = get_model(model_name).to(device)
+            optimizer,schedueler = get_optimizer(args['optimizer']['name'],
+                                             model,
+                                             args['optimizer']['lr'],
+                                             args['optimizer']['weight_decay'])
+            print_model(model)
+            model, optimizer, schedueler, start_epoch= load_checkpoint(model,model_name,optimizer,schedueler,args['train']['checkpoint_path'],logger,device)
+
+
+            model.eval() 
+            gradients = None
+
+
+
+
+            pathToFigure = 'Figure'
+
+            if not os.path.isdir(pathToFigure):
+                os.mkdir(pathToFigure)
+
+
+
+                for at in attacklist[0]:
+                    for fil in filterlist[1]:
+                        for m in range(1):
+                            attack(test_dataloader,at,eps_v=eps,filter=fil,mask=2+m)
         # acc = attack(test_dataloader,'FGSM',eps_v=0.015,filter='wavelet',hog=1)
         # acc = attack(test_dataloader,'FGSM',eps_v=0.015,filter='jpeg',hog=1)
         # break
